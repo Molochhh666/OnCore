@@ -2,6 +2,7 @@
 Thumbs.db
 config.json
 .venv/
+.venv-*/
 __pycache__/
 *.pyc
 
