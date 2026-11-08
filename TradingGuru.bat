@@ -26,16 +26,7 @@ if not errorlevel 1 (
   call :try_python 3.9
   call :try_python 3.8
 )
-if not defined PY_LAUNCHER (
-  where python >nul 2>nul
-  if not errorlevel 1 (
-    python -c "import platform,struct,sys; sys.exit(0 if (3,8) <= sys.version_info[:2] < (3,15) and platform.machine().lower() in ('amd64','x86_64') and struct.calcsize('P') == 8 else 1)" >nul 2>&1
-    if not errorlevel 1 (
-      set "PY_LAUNCHER=python"
-      for /f %%V in ('python -c "import sys; print(str(sys.version_info[0])+'.'+str(sys.version_info[1]))"') do set "PY_VERSION=%%V"
-    )
-  )
-)
+if not defined PY_LAUNCHER call :try_system_python
 if not defined PY_LAUNCHER goto compatible_python_required
 
 :python_selected
@@ -44,8 +35,11 @@ set "VENV_PYTHON=%VENV_PATH%\Scripts\python.exe"
 if not exist "%VENV_PYTHON%" (
   echo Setting up TradingGuru. This only happens once...
   %PY_LAUNCHER% -m venv "%VENV_PATH%"
-  if errorlevel 1 goto python_setup_error
+  if not exist "%VENV_PYTHON%" goto python_setup_error
 )
+set "VENV_VERSION="
+for /f %%V in ('"%VENV_PYTHON%" -c "import sys; print(str(sys.version_info[0])+'.'+str(sys.version_info[1]))" 2^>nul') do set "VENV_VERSION=%%V"
+if not "%VENV_VERSION%"=="%PY_VERSION%" goto python_setup_error
 
 "%VENV_PYTHON%" -c "import MetaTrader5" >nul 2>&1
 if errorlevel 1 (
@@ -94,10 +88,29 @@ goto wait_for_ollama
 
 :try_python
 if defined PY_LAUNCHER exit /b 0
-py -%~1 -c "import platform,struct,sys; sys.exit(0 if (3,8) <= sys.version_info[:2] < (3,15) and platform.machine().lower() in ('amd64','x86_64') and struct.calcsize('P') == 8 else 1)" >nul 2>&1
-if errorlevel 1 exit /b 0
+set "PY_CANDIDATE="
+for /f "tokens=2" %%V in ('py -%~1 --version 2^>nul') do set "PY_CANDIDATE=%%V"
+if not defined PY_CANDIDATE exit /b 0
+for /f "tokens=1,2 delims=." %%A in ("%PY_CANDIDATE%") do set "PY_CHECK_VERSION=%%A.%%B"
+if not "%PY_CHECK_VERSION%"=="%~1" exit /b 0
+set "PY_ARCH_CHECK="
+for /f %%V in ('py -%~1 -c "import platform,struct; print('TG_X64' if platform.machine().lower() in ('amd64','x86_64') and struct.calcsize('P') == 8 else 'TG_NO')" 2^>nul') do set "PY_ARCH_CHECK=%%V"
+if /i not "%PY_ARCH_CHECK%"=="TG_X64" exit /b 0
 set "PY_LAUNCHER=py -%~1"
 set "PY_VERSION=%~1"
+exit /b 0
+
+:try_system_python
+where python >nul 2>nul
+if errorlevel 1 exit /b 0
+set "PY_CANDIDATE="
+for /f "tokens=2" %%V in ('python --version 2^>nul') do set "PY_CANDIDATE=%%V"
+if not defined PY_CANDIDATE exit /b 0
+for /f "tokens=1,2 delims=." %%A in ("%PY_CANDIDATE%") do set "PY_VERSION=%%A.%%B"
+set "PY_ARCH_CHECK="
+for /f %%V in ('python -c "import platform,struct,sys; print('TG_X64' if (3,8) <= sys.version_info[:2] < (3,15) and platform.machine().lower() in ('amd64','x86_64') and struct.calcsize('P') == 8 else 'TG_NO')" 2^>nul') do set "PY_ARCH_CHECK=%%V"
+if /i not "%PY_ARCH_CHECK%"=="TG_X64" exit /b 0
+set "PY_LAUNCHER=python"
 exit /b 0
 
 :compatible_python_required
