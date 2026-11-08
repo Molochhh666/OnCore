@@ -37,9 +37,8 @@ if not exist "%VENV_PYTHON%" (
   %PY_LAUNCHER% -m venv "%VENV_PATH%"
   if not exist "%VENV_PYTHON%" goto python_setup_error
 )
-set "VENV_VERSION="
-for /f %%V in ('"%VENV_PYTHON%" -c "import sys; print(str(sys.version_info[0])+'.'+str(sys.version_info[1]))" 2^>nul') do set "VENV_VERSION=%%V"
-if not "%VENV_VERSION%"=="%PY_VERSION%" goto python_setup_error
+"%VENV_PYTHON%" -c "import sys; sys.exit(0 if str(sys.version_info.major)+'.'+str(sys.version_info.minor) == '%PY_VERSION%' else 1)" >nul 2>&1
+if errorlevel 1 goto python_setup_error
 
 "%VENV_PYTHON%" -c "import MetaTrader5" >nul 2>&1
 if errorlevel 1 (
@@ -149,7 +148,9 @@ pause
 exit /b 1
 
 :python_setup_error
-echo Could not set up Python for TradingGuru. Reinstall Python 3 and try again.
+echo Could not create or verify TradingGuru's Python environment.
+echo Install 64-bit Python 3.14, then run TradingGuru.bat again.
+start "" "https://www.python.org/downloads/release/python-31410/"
 pause
 exit /b 1
 
