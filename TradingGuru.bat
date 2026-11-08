@@ -15,30 +15,42 @@ if not exist "config.json" (
 )
 
 set "PY_LAUNCHER="
+set "PY_VERSION="
 where py >nul 2>nul
 if not errorlevel 1 (
-  py -3 --version >nul 2>&1
-  if not errorlevel 1 set "PY_LAUNCHER=py -3"
+  call :try_python 3.14
+  call :try_python 3.13
+  call :try_python 3.12
+  call :try_python 3.11
+  call :try_python 3.10
+  call :try_python 3.9
+  call :try_python 3.8
 )
 if not defined PY_LAUNCHER (
   where python >nul 2>nul
   if not errorlevel 1 (
-    python --version >nul 2>&1
-    if not errorlevel 1 set "PY_LAUNCHER=python"
+    python -c "import platform,struct,sys; sys.exit(0 if (3,8) <= sys.version_info[:2] < (3,15) and platform.machine().lower() in ('amd64','x86_64') and struct.calcsize('P') == 8 else 1)" >nul 2>&1
+    if not errorlevel 1 (
+      set "PY_LAUNCHER=python"
+      for /f %%V in ('python -c "import sys; print(str(sys.version_info[0])+'.'+str(sys.version_info[1]))"') do set "PY_VERSION=%%V"
+    )
   )
 )
-if not defined PY_LAUNCHER goto missing_python
+if not defined PY_LAUNCHER goto compatible_python_required
 
-if not exist ".venv\Scripts\python.exe" (
+:python_selected
+set "VENV_PATH=.venv-%PY_VERSION%"
+set "VENV_PYTHON=%VENV_PATH%\Scripts\python.exe"
+if not exist "%VENV_PYTHON%" (
   echo Setting up TradingGuru. This only happens once...
-  %PY_LAUNCHER% -m venv .venv
+  %PY_LAUNCHER% -m venv "%VENV_PATH%"
   if errorlevel 1 goto python_setup_error
 )
 
-".venv\Scripts\python.exe" -c "import MetaTrader5" >nul 2>&1
+"%VENV_PYTHON%" -c "import MetaTrader5" >nul 2>&1
 if errorlevel 1 (
   echo Installing the free MetaTrader 5 data connector...
-  ".venv\Scripts\python.exe" -m pip install MetaTrader5
+  "%VENV_PYTHON%" -m pip install MetaTrader5
   if errorlevel 1 goto mt5_install_error
 )
 
@@ -58,7 +70,7 @@ if errorlevel 1 (
 echo.
 echo Starting TradingGuru at http://127.0.0.1:8765
 start "" "http://127.0.0.1:8765"
-".venv\Scripts\python.exe" server.py
+"%VENV_PYTHON%" server.py
 echo.
 echo TradingGuru has stopped. You can close this window.
 pause
@@ -80,10 +92,34 @@ if %ollama_attempts% GEQ 15 exit /b 1
 timeout /t 2 /nobreak >nul
 goto wait_for_ollama
 
-:missing_python
-echo Python 3 is needed. Opening the official Python download page.
-start "" "https://www.python.org/downloads/windows/"
-echo Install Python 3, then double-click TradingGuru.bat again.
+:try_python
+if defined PY_LAUNCHER exit /b 0
+py -%~1 -c "import platform,struct,sys; sys.exit(0 if (3,8) <= sys.version_info[:2] < (3,15) and platform.machine().lower() in ('amd64','x86_64') and struct.calcsize('P') == 8 else 1)" >nul 2>&1
+if errorlevel 1 exit /b 0
+set "PY_LAUNCHER=py -%~1"
+set "PY_VERSION=%~1"
+exit /b 0
+
+:compatible_python_required
+where py >nul 2>nul
+if errorlevel 1 goto python_download_page
+py help install >nul 2>&1
+if errorlevel 1 goto python_download_page
+echo A compatible 64-bit Python version is needed for the MT5 connector.
+echo The Python installer can add Python 3.14 alongside your current version.
+choice /m "Download and install Python 3.14 now"
+if errorlevel 2 goto python_download_page
+py install 3.14
+if errorlevel 1 goto python_download_page
+call :try_python 3.14
+if not defined PY_LAUNCHER goto python_download_page
+goto python_selected
+
+:python_download_page
+echo TradingGuru needs 64-bit Python 3.8 through 3.14 for the MT5 connector.
+echo Opening the official Python 3.14 download page.
+start "" "https://www.python.org/downloads/release/python-31410/"
+echo Install the Windows installer marked 64-bit, then double-click TradingGuru.bat again.
 pause
 exit /b 1
 
@@ -105,7 +141,8 @@ pause
 exit /b 1
 
 :mt5_install_error
-echo Could not install the MT5 data connector. Check your internet connection and try again.
+echo Could not install the MT5 connector. It needs 64-bit Python 3.8 through 3.14 on Windows x64.
+echo Check your internet connection and confirm that TradingGuru selected a supported Python version.
 pause
 exit /b 1
 
