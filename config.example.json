@@ -1,0 +1,15 @@
+{
+  "market_source": "mt5",
+  "ollama_model": "qwen2.5:7b",
+  "mt5_symbols": {
+    "EUR/USD": "EURUSD",
+    "GBP/USD": "GBPUSD",
+    "USD/JPY": "USDJPY",
+    "AUD/USD": "AUDUSD",
+    "USD/INR": "USDINR",
+    "EUR/INR": "EURINR",
+    "GBP/INR": "GBPINR",
+    "JPY/INR": "JPYINR"
+  }
+}
+
