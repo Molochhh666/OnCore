@@ -1,79 +1,46 @@
-# Signal Desk
+# TradingGuru
 
-A free, local-first forex news and chart analysis workbench. It combines public headlines with current candles, displays basic technical indicators, and withholds its directional read when the inputs are missing, stale, or disagree. It does not place or manage orders.
+TradingGuru is a free Windows app for reviewing forex headlines alongside your MetaTrader 5 chart data. It runs on your PC, uses a free local AI model, and does not place or manage trades.
 
-## Start on Windows
+## Download and start
 
-1. Install Python 3 if it is not already installed.
-2. Install [Ollama](https://ollama.com/download) and download a local text model, for example `ollama pull qwen2.5:7b`. Smaller models may run better on lower memory PCs.
-3. For a local MetaTrader 5 chart feed, install the optional adapter with `py -m pip install MetaTrader5`.
-4. Copy `config.example.json` to `config.json` and choose a data source as described below. The example config includes `ollama_model`; set it to the model name available in Ollama.
-5. Open MetaTrader 5 and sign in to your broker if using `mt5`.
-6. Double-click `start.bat`, then open <http://127.0.0.1:8765>.
+1. Open the [TradingGuru GitHub page](https://github.com/Molochhh666/TradingGuru).
+2. Click the green **Code** button, then **Download ZIP**.
+3. In your Downloads folder, right-click the ZIP and choose **Extract All**.
+4. Open the extracted folder and double-click **TradingGuru.bat**.
 
-The server listens only on this PC. Do not expose it to the public internet. Headline search uses GDELT's public DOC API. News coverage and publication timing vary, and this is not a low-latency newswire.
+The first run sets up the app for you. It creates private settings on your PC, installs the MetaTrader 5 data connector, and downloads the local AI model (about 2 GB). Keep the black setup window open while it works. It will open TradingGuru in your browser when ready. Leave that window open while using the app; close it to stop TradingGuru.
 
-## Market data options
+### One-time installs
 
-### MetaTrader 5 broker candles (preferred for broker price alignment)
+The start file checks for the two free programs the app needs. If one is missing, it opens that program's official download page:
 
-In `config.json`, select `mt5` and map the app's pair names to the exact symbol names your broker shows in MT5. Broker suffixes vary (for example, `EURUSD.a`), so edit the map to match your terminal:
+- [Python for Windows](https://www.python.org/downloads/windows/) — install Python 3, then run **TradingGuru.bat** again.
+- [Ollama for Windows](https://ollama.com/download/windows) — install Ollama, then run **TradingGuru.bat** again.
 
-```json
-{
-  "market_source": "mt5",
-  "mt5_symbols": {
-    "EUR/USD": "EURUSD",
-    "GBP/USD": "GBPUSD",
-    "USD/JPY": "USDJPY",
-    "AUD/USD": "AUDUSD",
-    "USD/INR": "USDINR",
-    "EUR/INR": "EURINR",
-    "GBP/INR": "GBPINR",
-    "JPY/INR": "JPYINR"
-  }
-}
-```
+Keep an internet connection during the first setup so the connector and AI model can download. Later starts skip setup work that is already complete.
 
-The MetaTrader terminal must be installed, open, signed in, and have the selected symbol available. This integration reads candle data only; it does not read account positions or submit orders. CSV import is available if your broker does not support MT5.
+## Use your MT5 chart
 
-### Twelve Data FX candles
+Open MetaTrader 5, sign in to your broker, and make sure the currency pair you want is visible in the terminal. Then start TradingGuru. The default configuration reads candles from that local MT5 terminal. It does not read your account balance or positions, and it cannot send orders.
 
-Create a free Twelve Data key, then set `market_source` to `twelve_data` and add your key in `config.json`:
+If the app says a broker symbol is unavailable, your broker may use a suffix such as `EURUSD.a` instead of `EURUSD`. Check the exact symbol name in MT5; the pair mapping is in the private `config.json` file beside the app. You can ask for help adjusting it.
 
-```json
-{
-  "market_source": "twelve_data",
-  "twelve_data_api_key": "YOUR_KEY"
-}
-```
+The app can also import a candle CSV with these columns: `datetime,open,high,low,close`. Use UTC timestamps and at least 21 rows.
 
-The provider currently advertises real-time FX data on its free Basic plan with a daily request limit. Plans, supported symbols, and terms may change. Its FX spot price can differ from a broker's CFD quote or an Indian exchange currency-futures contract. Keep this config file private; Git ignores it.
+## What the app shows
 
-### Import candles
+- Public headlines from GDELT. It searches headlines, not full articles, and is not a low-latency news service.
+- Broker candles and bid/ask data from your local MT5 terminal.
+- A local AI classification and chart indicators (EMA 9, EMA 21, RSI 14, and ATR 14).
+- A BUY BIAS or SELL BIAS only when recent news and fresh chart data agree. Otherwise, it shows WAIT.
+- An optional exit-level alert while the app is open. The alert cannot close a trade.
 
-Choose **Import candles CSV** and load a CSV with these columns: `datetime,open,high,low,close`. At least 21 rows are needed. The selected pair must match the uploaded file. Use UTC timestamps to avoid timezone confusion. A file that contains old candles will be marked stale and cannot produce a signal.
+Signals are experimental analysis, not a promise of profit or financial advice. News can be misread or already priced in; prices can move quickly. The alignment score is not a probability of winning, and an alert level is not a guaranteed execution price. Check the original news and your broker before making decisions.
 
-## How the read works
+## Privacy and cost
 
-- News tone is a small, transparent keyword heuristic over the fetched headlines. It can misunderstand context, sarcasm, negation, or whether a story is already priced in.
-- If Ollama is configured and running, a local language model classifies recent headline context for the two currencies. It sees headline text and chart indicators only. This is AI assistance, not a reliable forecast. If a model is configured but unavailable, the app withholds the signal; with no model configured it uses the clearly labelled keyword fallback.
-- Chart checks use EMA 9, EMA 21, RSI 14, and ATR 14. A buy/sell bias is shown only when at least two fresh, pair-related headlines and a fresh price trend point the same way.
-- The alignment score is a heuristic, not a win probability. It has not been validated as a profitable strategy.
-- The exit level is an illustrative invalidation line based on the latest candle, recent swing, and 1.5 ATR. It is not a guaranteed stop price; fast moves, spread, and slippage can exceed it.
-- When the market is closed, the data is stale, the source is unavailable, or news and chart disagree, the app withholds the directional read.
-
-This is research software, not financial advice. A data API key is not a brokerage account. No live trading, order routing, position import, or automatic exits are included. The optional alert only watches a user-armed invalidation level while the app is open.
-
-## India note
-
-RBI guidance says residents may undertake forex transactions only with authorised persons and for permitted purposes, and electronic transactions should use RBI-authorised platforms or recognised Indian stock exchanges. Its October 10, 2026 release also changed thresholds for INR derivatives. Check the current RBI rules and your product's status before acting; this app does not determine whether a broker or trade is authorised.
-
-## Publish on GitHub
-
-1. Create a new repository and add the project files.
-2. Never upload `config.json`, broker credentials, or private account data. `.gitignore` excludes `config.json`.
-3. For a public project page, use **Settings → Pages → Deploy from a branch**. GitHub Pages can host the static UI, but the local Python server and private data keys will not run on GitHub Pages. Visitors need to run the app locally for news and market feeds.
+The app and local AI model are free. Headlines are requested from GDELT over the internet; chart data comes from your local MT5 terminal. The AI analysis runs through Ollama on your PC. Do not put broker passwords or account credentials in the app. A local `config.json` is created on first start and is excluded from GitHub.
 
 ## License
 
