@@ -1,6 +1,6 @@
 # TradingGuru
 
-TradingGuru is a free Windows app for reviewing forex headlines alongside your MetaTrader 5 chart data. It runs on your PC, uses a free local AI model, and does not place or manage trades.
+TradingGuru is a free Windows app for reviewing forex headlines alongside your MetaTrader 5 chart data. It runs on your PC, uses a free local AI model, and does not place or manage trades. The one-click MT5 setup is for Windows 10/11 64-bit PCs.
 
 ## Download and start
 
@@ -13,12 +13,14 @@ The first run sets up the app for you. It creates private settings on your PC, i
 
 ### One-time installs
 
-The start file checks for the two free programs the app needs. If one is missing, it opens that program's official download page:
+The start file checks for the free programs the app needs. If Python is missing or too new, it offers to install Python 3.14 alongside your current version. If that option is unavailable, it opens the official Python download page. If Ollama is missing, it opens Ollama's official download page:
 
-- [Python for Windows](https://www.python.org/downloads/windows/) — install Python 3, then run **TradingGuru.bat** again.
+- [Python 3.14 for Windows](https://www.python.org/downloads/release/python-31410/) — if you install it manually, choose the **Windows installer (64-bit)**. Do not remove a newer Python version. The launcher picks a compatible version from Python 3.8 to 3.14 automatically.
 - [Ollama for Windows](https://ollama.com/download/windows) — install Ollama, then run **TradingGuru.bat** again.
 
 Keep an internet connection during the first setup so the connector and AI model can download. Later starts skip setup work that is already complete.
+
+The MT5 Python connector currently publishes Windows x86-64 packages. The one-click live MT5 feed therefore does not support macOS, Linux, 32-bit Windows, or Windows ARM directly. On those systems, the app can still analyze imported candle CSV files, but the MT5 live feed needs a supported Windows x64 computer.
 
 ## Use your MT5 chart
 
