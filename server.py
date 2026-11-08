@@ -1,4 +1,4 @@
-"""Local-only HTTP server and market/news adapters for Signal Desk."""
+"""Local-only HTTP server and market/news adapters for TradingGuru."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, urlencode
 from urllib.request import Request, urlopen
@@ -27,7 +27,7 @@ def config():
         return {}
 
 def fetch_json(url):
-    req = Request(url, headers={"User-Agent": "SignalDesk/1.0 (local research tool)", "Accept": "application/json"})
+    req = Request(url, headers={"User-Agent": "TradingGuru/1.0 (local research tool)", "Accept": "application/json"})
     with urlopen(req, timeout=18) as response:
         return json.loads(response.read().decode("utf-8", "replace"))
 
@@ -179,6 +179,6 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(os.environ.get("SIGNAL_DESK_PORT", "8765"))
-    print(f"Signal Desk running on http://127.0.0.1:{port} — Ctrl+C to stop")
+    print(f"TradingGuru running on http://127.0.0.1:{port} — close this window to stop")
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
 
