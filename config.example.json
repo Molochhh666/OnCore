@@ -1,6 +1,6 @@
 {
   "market_source": "mt5",
-  "ollama_model": "qwen2.5:7b",
+  "ollama_model": "qwen2.5:3b",
   "mt5_symbols": {
     "EUR/USD": "EURUSD",
     "GBP/USD": "GBPUSD",
