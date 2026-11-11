@@ -276,7 +276,8 @@ h2 { font-size: 15px; }
 }
 .report[data-decision="buy"] { color: var(--mint); }
 .report[data-decision="sell"] { color: var(--red); }
-.report[data-decision="wait"] { color: var(--amber); }
+.report[data-decision="unavailable"] { color: var(--amber); }
+.report[data-decision="working"] { color: var(--muted); }
 .footer { display: flex; justify-content: space-between; margin: 14px 2px 5px; color: #62717f; font-size: 9px; }
 .is-hidden { display: none !important; }
 

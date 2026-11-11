@@ -1,6 +1,6 @@
 # OnCore
 
-OnCore is a Chromium side-panel extension for visual chart and current-news research. It offers two ways to provide a chart image: periodic reading of the largest accessible canvas on the active Quotex page, or a one-time capture of the visible browser tab. Its result is a one-line `NEXT CANDLE: BUY`, `SELL`, or `WAIT` decision. It never places or manages trades.
+OnCore is a Chromium side-panel extension for visual chart and current-news research. It offers two ways to provide a chart image: periodic reading of the largest accessible canvas on the active Quotex page, or a one-time capture of the visible browser tab. Its result is a one-line `NEXT CANDLE: BUY` or `NEXT CANDLE: SELL` decision. It never places or manages trades.
 
 ## Chart review modes
 
@@ -26,13 +26,13 @@ If screenshot capture fails, close the side panel, select the Quotex chart tab, 
 
 ## News sources and AI service
 
-OnCore searches GDELT's public English-language article index for matching articles indexed in the last 24 hours, then sends up to four candidate links to Gemini URL Context. Successful news results are cached for 30 seconds per asset; requests are spaced at least 5.5 seconds apart, and one HTTP 429 is retried after a delay. Gemini attempts to read accessible article pages as context for the one-line decision. GDELT coverage is not complete, and publishers may block full article access. If news lookup fails or returns no matching articles, OnCore immediately displays WAIT without waiting for Gemini.
+OnCore searches GDELT's public English-language article index for matching articles indexed in the last 24 hours, then sends up to four candidate links to Gemini URL Context. Successful news results are cached for 30 seconds per asset; requests are spaced at least 5.5 seconds apart, and one HTTP 429 is retried after a delay. Gemini attempts to read accessible article pages as context for the one-line decision. GDELT coverage is not complete, and publishers may block full article access. If news lookup fails or returns no matching articles, OnCore asks Gemini to make a chart-only decision. It uses a local candle-color fallback if the AI request fails.
 
 The extension has no subscription or hosted server. The news list does not require an API key. Gemini requires your own key and its free quota, model availability, and billing terms are controlled by Google and can change. Set up your Google project with the billing choices you want before using it. OnCore cannot guarantee every request will remain free.
 
 ## Accuracy and safe use
 
-Images are not a live broker feed and do not contain exact raw prices. Candle visibility, page zoom, overlays, browser capture limits, inaccessible iframes, news coverage, and AI interpretation can all affect the review. The one-line next-candle decision is a non-binding AI estimate and can be wrong. OnCore returns WAIT if evidence is unclear, conflicting, or current news is unavailable. No outcome is guaranteed.
+Images are not a live broker feed and do not contain exact raw prices. Candle visibility, page zoom, overlays, browser capture limits, inaccessible iframes, news coverage, and AI interpretation can all affect the review. The one-line next-candle decision is a non-binding AI estimate and can be wrong. OnCore asks Gemini to choose the stronger BUY or SELL direction from the chart when news is unavailable. A local candle-color fallback can be used if Gemini fails. Signals can be wrong; no outcome is guaranteed.
 
 OnCore is read-only: it does not click Quotex controls or place trades. Quotex's [published trading rules](https://quotex.com/documents/en/Rules_of_Trading_operations_QTX.pdf) address automated software that performs operations without the user's direct participation. Check the platform's current rules before using any browser add-on.
 

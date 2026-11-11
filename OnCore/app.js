@@ -300,9 +300,9 @@ function renderArticles(articles, newsWarning) {
     empty.className = 'news-empty';
     empty.textContent = newsWarning
       ? /HTTP 429/.test(newsWarning)
-        ? 'News is temporarily rate-limited. NEXT CANDLE: WAIT.'
-        : 'Current news is unavailable. NEXT CANDLE: WAIT.'
-      : 'No matching current news. NEXT CANDLE: WAIT.';
+        ? 'News is rate-limited; chart-only decision follows.'
+        : 'News unavailable; chart-only decision follows.'
+      : 'No matching current news; chart-only decision follows.';
     ui.newsList.append(empty);
     return;
   }
@@ -347,30 +347,33 @@ async function compressScreenshot(dataUrl, captureLabel) {
 
 function buildPrompt(asset, timeframe, articles, sourceMode, newsWarning) {
   const articleList = articles.length
-    ? articles.map((article, index) => {
-        return (index + 1) + '. ' + article.title + ' | ' + article.domain +
-          ' | indexed ' + (article.seenAt || 'time unavailable') + ' | ' + article.url;
-      }).join('\n')
+    ? articles.map((article, index) =>
+        (index + 1) + '. ' + article.title + ' | ' + article.domain +
+        ' | indexed ' + (article.seenAt || 'time unavailable') + ' | ' + article.url
+      ).join('\n')
     : newsWarning
-      ? 'Current news is unavailable: ' + newsWarning
-      : 'No matching current news articles were found.';
+      ? 'Current news could not be loaded; use the chart only.'
+      : 'No matching current articles were found.';
 
   const captureDescription = sourceMode === 'canvas'
     ? 'The image is the largest accessible live chart canvas.'
     : sourceMode === 'live-screenshot'
-      ? 'The image is a visible-tab screenshot used as the live chart fallback.'
+      ? 'The image is a visible-tab capture used for live chart reading.'
       : 'The image is a one-time screenshot of the visible browser tab.';
+  const chartOnly = !articles.length;
 
   return [
-    'Analyze the attached current chart for the NEXT candle only.',
-    'Asset: ' + asset + '. Chart timeframe: ' + timeframe + '. ' + captureDescription,
-    'Inspect the visible candle sequence, bodies and wicks, short-term structure, and clear support or resistance. Compare with the asset-matched current article sources below; use URL Context to read accessible article content. Do not invent unreadable candle details, prices, or news.',
-    'Current article candidates (last 24 hours):',
+    'Analyze the attached current chart and give a direction for the NEXT candle only.',
+    'Asset: ' + asset + '. Candle timeframe: ' + timeframe + '. ' + captureDescription,
+    'Read the latest distinguishable candles, bodies and wicks, immediate momentum, and nearby swing structure. Do not invent prices or unreadable candle details.',
+    chartOnly
+      ? 'No verified current news is available. Ignore the missing news and decide from the chart alone.'
+      : 'Use the asset-matched article candidates below as context. Open accessible links with URL Context. If the news is irrelevant or inaccessible, decide from the chart alone.',
+    'Current article candidates:',
     articleList,
-    'Choose BUY only when the chart evidence gives a clear short-term upward setup and relevant news does not conflict. Choose SELL only when the chart evidence gives a clear short-term downward setup and relevant news does not conflict. Choose WAIT if the chart is unclear, choppy, conflicting, or the news cannot be verified or matched to this asset. Never force a direction.',
-    newsWarning ? 'The current-news lookup failed, so the required decision is WAIT.' : '',
-    'Return exactly one line and nothing else, using exactly one of these forms: NEXT CANDLE: BUY | NEXT CANDLE: SELL | NEXT CANDLE: WAIT. Do not add reasons, headings, markdown, confidence, duration, or any other text.'
-  ].filter(Boolean).join('\n');
+    'Choose BUY or SELL only. For a clear chart, follow the stronger short-term direction. If recent candles are mixed, use the latest completed candle together with the direction of the nearest visible swing. Never claim certainty or a guaranteed outcome.',
+    'Return exactly one line and nothing else: NEXT CANDLE: BUY or NEXT CANDLE: SELL. If no chart candles are actually visible, return exactly SIGNAL UNAVAILABLE. Do not add a reason, heading, markdown, duration, or any other text.'
+  ].join('\n');
 }
 
 async function callGemini(apiKey, model, prompt, image, signal, useUrlContext) {
@@ -417,12 +420,75 @@ async function callGemini(apiKey, model, prompt, image, signal, useUrlContext) {
 
 function normalizeNextCandleDecision(responseText) {
   const text = String(responseText || '');
-  const labeled = text.match(/(?:^|\n)\s*(?:#{1,6}\s*)?(?:\*\*)?(?:NEXT CANDLE|DECISION)(?:\*\*)?\s*[:：–-]\s*(?:\*\*)?\s*(BUY|SELL|WAIT)\b/i);
-  if (labeled) return 'NEXT CANDLE: ' + labeled[1].toUpperCase();
+  const labeled = text.match(/(?:^|\n)\s*(?:#{1,6}\s*)?(?:\*\*)?(?:NEXT CANDLE|DECISION)(?:\*\*)?\s*[:：–-]\s*(?:\*\*)?\s*(BUY|SELL)\b/i);
+  if (labeled) return labeled[1].toUpperCase();
 
   const firstLine = text.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || '';
-  const bare = firstLine.match(/^(?:#{1,6}\s*)?(?:\*\*)?(BUY|SELL|WAIT)\b/i);
-  return bare ? 'NEXT CANDLE: ' + bare[1].toUpperCase() : 'NEXT CANDLE: WAIT';
+  const bare = firstLine.match(/^(?:#{1,6}\s*)?(?:\*\*)?(BUY|SELL)\b/i);
+  return bare ? bare[1].toUpperCase() : '';
+}
+
+async function chartPixelFallbackDecision(image) {
+  if (!image || !image.data || !image.mimeType) return '';
+  try {
+    const source = new Image();
+    source.src = 'data:' + image.mimeType + ';base64,' + image.data;
+    await source.decode();
+    const width = source.naturalWidth;
+    const height = source.naturalHeight;
+    if (width < 120 || height < 120) return '';
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) return '';
+    context.drawImage(source, 0, 0);
+    const pixels = context.getImageData(0, 0, width, height).data;
+
+    const visibleTab = image.sourceMode !== 'canvas' && width / height > 1.6;
+    const xStart = Math.floor(width * (visibleTab ? 0.095 : 0.035));
+    const xEnd = Math.floor(width * (visibleTab ? 0.55 : 0.92));
+    const yStart = Math.floor(height * (visibleTab ? 0.21 : 0.10));
+    const yEnd = Math.floor(height * (visibleTab ? 0.90 : 0.92));
+    const chartWidth = xEnd - xStart;
+    const recentStart = Math.floor(xStart + chartWidth * 0.70);
+    let redScore = 0;
+    let greenScore = 0;
+    let redPixels = 0;
+    let greenPixels = 0;
+    let latestColor = '';
+
+    for (let x = recentStart; x < xEnd; x += 1) {
+      let columnRed = 0;
+      let columnGreen = 0;
+      const recencyWeight = 0.65 + 0.35 * ((x - recentStart) / Math.max(1, xEnd - recentStart - 1));
+      for (let y = yStart; y < yEnd; y += 1) {
+        const index = (y * width + x) * 4;
+        const red = pixels[index];
+        const green = pixels[index + 1];
+        const blue = pixels[index + 2];
+        if (red >= 135 && red - green >= 48 && red - blue >= 32) {
+          columnRed += 1;
+        } else if (green >= 95 && green - red >= 35 && green - blue >= 18) {
+          columnGreen += 1;
+        }
+      }
+      if (columnRed || columnGreen) {
+        latestColor = columnGreen > columnRed ? 'BUY' : 'SELL';
+        redPixels += columnRed;
+        greenPixels += columnGreen;
+        redScore += columnRed * recencyWeight;
+        greenScore += columnGreen * recencyWeight;
+      }
+    }
+
+    if (redPixels + greenPixels < 20) return '';
+    if (Math.abs(redScore - greenScore) < 1) return latestColor;
+    return greenScore > redScore ? 'BUY' : 'SELL';
+  } catch (_) {
+    return '';
+  }
 }
 
 function getTabUrl(tab) {
@@ -605,11 +671,13 @@ async function analyze(sourceMode, automatic, pageAccessReady) {
   const controller = new AbortController();
   liveAbortController = controller;
   setBusy(true);
+  let capturedImage = null;
   ui.results.classList.add('is-hidden');
   ui.captureCard.classList.add('is-hidden');
   setStatus(sourceMode === 'canvas' ? 'Reading the visible chart canvas…' : 'Capturing the visible tab…', 'working');
   try {
     const image = sourceMode === 'canvas' ? await captureLiveCanvas() : await captureVisibleScreenshot();
+    capturedImage = image;
     if (automatic && liveTimer === null) throw new Error('Live reading stopped.');
     await saveSettings(false);
 
@@ -628,21 +696,20 @@ async function analyze(sourceMode, automatic, pageAccessReady) {
       : newsWarning ? 'NEWS UNAVAILABLE' : 'NO SOURCES · 24H';
     ui.results.classList.remove('is-hidden');
 
-    const fallbackDecision = 'NEXT CANDLE: WAIT';
-    ui.report.textContent = fallbackDecision;
-    ui.report.dataset.decision = 'wait';
+    ui.report.textContent = 'ANALYZING CHART…';
+    ui.report.dataset.decision = 'working';
     ui.reportTime.textContent = new Date().toLocaleString();
-    if (newsWarning || !articles.length) {
-      setStatus('Current news unavailable. NEXT CANDLE: WAIT.', 'success');
-      return true;
-    }
+    setStatus(newsWarning || !articles.length
+      ? 'News unavailable; analyzing the chart only.'
+      : 'Analyzing the current chart and article sources.', 'working');
 
-    setStatus('Reviewing the chart and current article sources… WAIT until the review finishes.', 'working');
     const effectiveMode = image.sourceMode || sourceMode;
     const report = await callGemini(apiKey, model, buildPrompt(asset, timeframe, articles, effectiveMode, newsWarning), image, controller.signal, articles.length > 0);
-    const decision = normalizeNextCandleDecision(report);
+    let direction = normalizeNextCandleDecision(report);
+    if (!direction) throw new Error('Gemini did not return a BUY or SELL direction.');
+    const decision = 'NEXT CANDLE: ' + direction;
     ui.report.textContent = decision;
-    ui.report.dataset.decision = decision.slice(decision.indexOf(':') + 1).trim().toLowerCase();
+    ui.report.dataset.decision = direction.toLowerCase();
     ui.reportTime.textContent = new Date().toLocaleString();
     if (automatic) {
       const intervalMinutes = Math.round(Number(ui.liveInterval.value) / 60000);
@@ -652,10 +719,25 @@ async function analyze(sourceMode, automatic, pageAccessReady) {
     }
     return true;
   } catch (error) {
+    const message = error && error.message ? error.message : 'Analysis failed. Check the settings and retry.';
+    if (capturedImage && !(controller.signal && controller.signal.aborted)) {
+      const fallbackDirection = await chartPixelFallbackDecision(capturedImage);
+      if (fallbackDirection) {
+        const decision = 'NEXT CANDLE: ' + fallbackDirection;
+        ui.report.textContent = decision;
+        ui.report.dataset.decision = fallbackDirection.toLowerCase();
+        ui.reportTime.textContent = new Date().toLocaleString();
+        setStatus('Chart-only fallback: ' + fallbackDirection + '.', 'success');
+        return true;
+      }
+    }
+    if (ui.results && !ui.results.classList.contains('is-hidden')) {
+      ui.report.textContent = 'SIGNAL UNAVAILABLE';
+      ui.report.dataset.decision = 'unavailable';
+    }
     if (automatic && controller.signal.aborted && liveTimer === null) {
       setStatus('Live chart reading stopped.', 'success');
     } else {
-      const message = error && error.message ? error.message : 'Analysis failed. Check the settings and retry.';
       if (automatic) stopLive(false);
       setStatus(automatic ? 'Live reading stopped: ' + message : message, 'error');
     }
