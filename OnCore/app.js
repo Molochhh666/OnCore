@@ -299,8 +299,10 @@ function renderArticles(articles, newsWarning) {
     const empty = document.createElement('p');
     empty.className = 'news-empty';
     empty.textContent = newsWarning
-      ? 'Current-news lookup failed: ' + newsWarning + ' The report will mark news as unavailable.'
-      : 'No matching English-language stories were found in the last 24 hours. OnCore will label news coverage as unavailable and will not invent it.';
+      ? /HTTP 429/.test(newsWarning)
+        ? 'News is temporarily rate-limited. NEXT CANDLE: WAIT.'
+        : 'Current news is unavailable. NEXT CANDLE: WAIT.'
+      : 'No matching current news. NEXT CANDLE: WAIT.';
     ui.newsList.append(empty);
     return;
   }
@@ -626,10 +628,19 @@ async function analyze(sourceMode, automatic, pageAccessReady) {
       : newsWarning ? 'NEWS UNAVAILABLE' : 'NO SOURCES · 24H';
     ui.results.classList.remove('is-hidden');
 
-    setStatus(newsWarning ? 'News lookup failed; completing the chart review with news marked unavailable…' : 'Reading chart and accessible article pages…', 'working');
+    const fallbackDecision = 'NEXT CANDLE: WAIT';
+    ui.report.textContent = fallbackDecision;
+    ui.report.dataset.decision = 'wait';
+    ui.reportTime.textContent = new Date().toLocaleString();
+    if (newsWarning || !articles.length) {
+      setStatus('Current news unavailable. NEXT CANDLE: WAIT.', 'success');
+      return true;
+    }
+
+    setStatus('Reviewing the chart and current article sources… WAIT until the review finishes.', 'working');
     const effectiveMode = image.sourceMode || sourceMode;
     const report = await callGemini(apiKey, model, buildPrompt(asset, timeframe, articles, effectiveMode, newsWarning), image, controller.signal, articles.length > 0);
-    const decision = newsWarning || !articles.length ? 'NEXT CANDLE: WAIT' : normalizeNextCandleDecision(report);
+    const decision = normalizeNextCandleDecision(report);
     ui.report.textContent = decision;
     ui.report.dataset.decision = decision.slice(decision.indexOf(':') + 1).trim().toLowerCase();
     ui.reportTime.textContent = new Date().toLocaleString();

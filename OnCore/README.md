@@ -26,7 +26,7 @@ If screenshot capture fails, close the side panel, select the Quotex chart tab, 
 
 ## News sources and AI service
 
-OnCore searches GDELT's public English-language article index for matching articles indexed in the last 24 hours, then sends up to four candidate links to Gemini URL Context. Successful news results are cached for 30 seconds per asset; requests are spaced at least 5.5 seconds apart, and one HTTP 429 is retried after a delay. Gemini attempts to read accessible article pages as context for the one-line decision. GDELT coverage is not complete, and publishers may block full article access. If there are no matching current articles, OnCore returns WAIT.
+OnCore searches GDELT's public English-language article index for matching articles indexed in the last 24 hours, then sends up to four candidate links to Gemini URL Context. Successful news results are cached for 30 seconds per asset; requests are spaced at least 5.5 seconds apart, and one HTTP 429 is retried after a delay. Gemini attempts to read accessible article pages as context for the one-line decision. GDELT coverage is not complete, and publishers may block full article access. If news lookup fails or returns no matching articles, OnCore immediately displays WAIT without waiting for Gemini.
 
 The extension has no subscription or hosted server. The news list does not require an API key. Gemini requires your own key and its free quota, model availability, and billing terms are controlled by Google and can change. Set up your Google project with the billing choices you want before using it. OnCore cannot guarantee every request will remain free.
 

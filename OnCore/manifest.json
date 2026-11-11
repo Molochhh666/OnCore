@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OnCore",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Live chart-canvas and screenshot news research sidebar.",
   "minimum_chrome_version": "116",
   "permissions": [
