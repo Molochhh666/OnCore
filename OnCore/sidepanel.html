@@ -81,7 +81,7 @@
 
       <label class="consent-row">
         <input id="consent" type="checkbox">
-        <span>When I analyze, send the captured chart view and asset/news context to Google Gemini. Free-tier data may be used to improve Google services.</span>
+        <span>When I analyze, send the chart image—which may be a visible-tab capture—and asset/news context to Google Gemini. Free-tier data may be used to improve Google services.</span>
       </label>
       <p class="fine-print">The first review will ask Chrome to let OnCore access Quotex pages so it can identify and read the chart. This permission is limited to Quotex and QXBroker.</p>
 
@@ -101,7 +101,7 @@
         </div>
         <span id="live-state" class="live-state">OFF</span>
       </div>
-      <p class="live-copy">OnCore reads the largest accessible chart canvas at each interval. It does not use a broker feed or raw OHLC data. Keep this panel open and the Quotex tab active. If the canvas cannot be read, use the screenshot option above.</p>
+      <p class="live-copy">OnCore reads the largest accessible chart canvas at each interval. If it is blank or blocked, live mode captures the visible tab for that review. Hide balances and personal details first. It does not use a broker feed or raw OHLC data.</p>
       <label class="field">
         <span>AI review interval</span>
         <select id="live-interval" name="live-interval">
@@ -118,7 +118,7 @@
           <span aria-hidden="true">■</span><span>Stop live reading</span>
         </button>
       </div>
-      <p class="fine-print">Live mode sends one chart-canvas image and the current article links to Gemini on each review. The free API has usage limits. Closing this panel stops the watch.</p>
+      <p class="fine-print">Live mode sends one chart image and the current article links to Gemini on each review. The free API has usage limits. Closing this panel stops the watch.</p>
     </section>
 
     <section id="capture-card" class="capture-card is-hidden" aria-label="Captured chart">
@@ -127,7 +127,7 @@
         <span id="capture-time" class="micro-label"></span>
       </div>
       <img id="chart-preview" alt="Temporary preview of the captured chart">
-      <p class="fine-print">This is a one-time capture of the visible browser tab only. The image stays in this open panel’s memory. Hide balances and account details before capturing.</p>
+      <p class="fine-print">This image stays in this open panel’s memory. Live fallback may show the whole visible tab. Hide balances and account details before capturing.</p>
     </section>
 
     <section id="results" class="results-card is-hidden">
@@ -147,7 +147,7 @@
     </section>
 
     <footer class="footer">
-      <span>OnCore 1.0.3</span>
+      <span>OnCore 1.0.4</span>
       <span>Nothing here is an order.</span>
     </footer>
   </main>
@@ -155,5 +155,4 @@
   <script src="app.js"></script>
 </body>
 </html>
-
 

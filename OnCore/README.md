@@ -4,9 +4,9 @@ OnCore is a Chromium side-panel extension for visual chart and current-news rese
 
 ## Chart review modes
 
-- **Live chart reading** injects a small reader only after you start live mode. At your chosen 1, 5, or 15 minute interval, it captures the largest visible canvas it can access from the active Quotex page and requests a fresh AI review. Keep the side panel open and the Quotex tab active. Each interval uses an AI request and can reach the provider's free quota.
+- **Live chart reading** injects a small reader only after you start live mode. At your chosen 1, 5, or 15 minute interval, it captures the largest visible canvas it can access from the active Quotex page. If that canvas is blank or blocked, it automatically captures the visible tab for that review. Keep the side panel open and the Quotex tab active. Each interval uses an AI request and can reach the provider's free quota.
 - **Screenshot review** captures the visible tab once after you click its button. It does not capture the entire page or run repeatedly.
-- If the page does not expose a readable canvas, the live mode stops with an explanation and points to screenshot review. The chart may also appear in an iframe that the browser will not let the extension read.
+- If the page does not expose a readable canvas, live mode uses a visible-tab image as a fallback. The fallback can include account details visible in the browser, so hide balances and personal information before starting.
 
 Both modes send a visual image, not raw quotes or OHLC values. They cannot promise an exact candle-by-candle reading, exact price levels, or pattern detection. The selected live interval is the AI review cadence; it does not change the chart's candle timeframe. Choose the displayed candle timeframe in the Quotex chart and set the matching timeframe in OnCore.
 
@@ -32,7 +32,7 @@ The extension has no subscription or hosted server. The news list does not requi
 
 ## Accuracy and safe use
 
-Images are not a live broker feed and do not contain exact raw prices. Candle visibility, page zoom, overlays, browser capture limits, inaccessible iframes, news coverage, and AI interpretation can all affect the review. The BUY/SELL/WAIT view and estimated duration are non-binding, can be wrong, and are not calibrated probabilities. The model should return WAIT and no duration when evidence is unclear or conflicting. Consider the cited evidence and uncertainty before making your own decision; no outcome is guaranteed.
+Images are not a live broker feed and do not contain exact raw prices. Candle visibility, page zoom, overlays, browser capture limits, inaccessible iframes, news coverage, and AI interpretation can all affect the review. The BUY/SELL/WAIT view and estimated duration are non-binding, can be wrong, and are not calibrated probabilities. The model should return WAIT and no duration when evidence is unclear or conflicting. If the current-news feed times out, OnCore still returns a chart report but instructs the model to choose WAIT with no duration. Consider the cited evidence and uncertainty before making your own decision; no outcome is guaranteed.
 
 OnCore is read-only: it does not click Quotex controls or place trades. Quotex's [published trading rules](https://quotex.com/documents/en/Rules_of_Trading_operations_QTX.pdf) address automated software that performs operations without the user's direct participation. Check the platform's current rules before using any browser add-on.
 
@@ -54,5 +54,4 @@ There are no broker credentials, private Quotex feed interceptions, external Jav
 ## License
 
 OnCore is covered by the MIT license at the root of this repository.
-
 

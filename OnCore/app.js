@@ -1,6 +1,6 @@
 const DEFAULT_MODEL = 'gemini-3.8-flash';
 const MODEL_ALLOWLIST = new Set(['gemini-3.8-flash', 'gemini-3.5-flash-lite']);
-const MAX_ARTICLES = 6;
+const MAX_ARTICLES = 4;
 const QUOTEX_ORIGINS = ['https://*.quotex.com/*', 'https://*.qxbroker.com/*'];
 let isBusy = false;
 let liveTimer = null;
@@ -186,12 +186,12 @@ async function fetchRecentArticles(asset, signal) {
     mode: 'artlist',
     format: 'json',
     timespan: '24h',
-    maxrecords: '30',
+    maxrecords: '20',
     sort: 'datedesc'
   });
   const response = await fetchWithTimeout('https://api.gdeltproject.org/api/v2/doc/doc?' + params.toString(), {
     headers: { 'Accept': 'application/json' }
-  }, 15000, signal);
+  }, 20000, signal, 'the current-news lookup');
   const responseBody = await response.text();
   if (!response.ok) {
     const detail = responseBody.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 180);
@@ -209,7 +209,7 @@ async function fetchRecentArticles(asset, signal) {
   }
   return uniqueArticles(payload.articles);
 }
-async function fetchWithTimeout(url, options, timeoutMs, externalSignal) {
+async function fetchWithTimeout(url, options, timeoutMs, externalSignal, requestLabel) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const abortFromCaller = () => controller.abort();
@@ -221,14 +221,15 @@ async function fetchWithTimeout(url, options, timeoutMs, externalSignal) {
     return await fetch(url, Object.assign({}, options, { signal: controller.signal }));
   } catch (error) {
     if (externalSignal && externalSignal.aborted) throw new Error('Live reading stopped.');
-    if (error && error.name === 'AbortError') throw new Error('The request timed out. Please try again.');
-    throw new Error('Could not connect to the news or AI service. Check your internet connection and retry.');
+    if (error && error.name === 'AbortError') {
+      throw new Error((requestLabel || 'The request') + ' timed out after ' + Math.round(timeoutMs / 1000) + ' seconds.');
+    }
+    throw new Error('Could not connect to ' + (requestLabel || 'the requested service') + '. Check your internet connection and retry.');
   } finally {
     clearTimeout(timer);
     if (externalSignal) externalSignal.removeEventListener('abort', abortFromCaller);
   }
 }
-
 function formatArticleDate(isoDate) {
   if (!isoDate) return 'Publication time unavailable';
   try {
@@ -238,12 +239,14 @@ function formatArticleDate(isoDate) {
   }
 }
 
-function renderArticles(articles) {
+function renderArticles(articles, newsWarning) {
   ui.newsList.replaceChildren();
   if (!articles.length) {
     const empty = document.createElement('p');
     empty.className = 'news-empty';
-    empty.textContent = 'No matching English-language stories were found in the last 24 hours. OnCore will label news coverage as unavailable and will not invent it.';
+    empty.textContent = newsWarning
+      ? 'Current-news lookup failed: ' + newsWarning + ' The report will mark news as unavailable.'
+      : 'No matching English-language stories were found in the last 24 hours. OnCore will label news coverage as unavailable and will not invent it.';
     ui.newsList.append(empty);
     return;
   }
@@ -264,7 +267,6 @@ function renderArticles(articles) {
     ui.newsList.append(link);
   }
 }
-
 async function compressScreenshot(dataUrl, captureLabel) {
   const image = new Image();
   image.src = dataUrl;
@@ -287,13 +289,15 @@ async function compressScreenshot(dataUrl, captureLabel) {
   };
 }
 
-function buildPrompt(asset, timeframe, articles, sourceMode, previousReport) {
+function buildPrompt(asset, timeframe, articles, sourceMode, previousReport, newsWarning) {
   const articleList = articles.length
     ? articles.map((article, index) => {
         return (index + 1) + '. ' + article.title + '\n   Publisher: ' + article.domain +
           '\n   GDELT indexed at: ' + (article.seenAt || 'not supplied') + '\n   URL: ' + article.url;
       }).join('\n')
-    : 'No matching articles were found by the current-news feed.';
+    : newsWarning
+      ? 'No article candidates are available because the current-news lookup failed: ' + newsWarning + '. Do not use model memory to invent current events.'
+      : 'No matching articles were found by the current-news feed.';
   const now = new Date().toISOString();
 
   return [
@@ -302,12 +306,14 @@ function buildPrompt(asset, timeframe, articles, sourceMode, previousReport) {
     '',
     sourceMode === 'canvas'
       ? 'The attached image is a live copy of the largest accessible canvas rendered on the active Quotex page. It is a visual chart image, not raw market data. Read the visible candles from left to right as far as they are individually distinguishable. Describe bullish/bearish candle color, body and wick structure, sequences, and clear formations. Do not invent OHLC values, indicators, exact levels, candle counts, or patterns that are not legible. Say plainly if the chart canvas is too small, cropped, obstructed, or too dense for a candle-by-candle read.'
-      : 'The attached image is a one-time screenshot of the visible browser tab, not raw market data. Read the visible candles from left to right as far as they are individually distinguishable. Describe bullish/bearish candle color, body and wick structure, sequences, and clear formations. Do not invent OHLC values, indicators, exact levels, candle counts, or patterns that are not legible. Say plainly if the screenshot is too small, cropped, obstructed, or too dense for a candle-by-candle read.',
+      : sourceMode === 'live-screenshot'
+        ? 'The attached image is an automatic visible-tab capture taken during this live review because the chart canvas was blank or inaccessible. It is not raw market data. Read the visible candles from left to right as far as they are individually distinguishable. Do not invent OHLC values, indicators, exact levels, candle counts, or patterns that are not legible. Say plainly if the image is cropped, obstructed, or too dense for a candle-by-candle read.'
+        : 'The attached image is a one-time screenshot of the visible browser tab, not raw market data. Read the visible candles from left to right as far as they are individually distinguishable. Describe bullish/bearish candle color, body and wick structure, sequences, and clear formations. Do not invent OHLC values, indicators, exact levels, candle counts, or patterns that are not legible. Say plainly if the screenshot is too small, cropped, obstructed, or too dense for a candle-by-candle read.',
     '',
     'Current-news candidates returned by GDELT from its last-24-hour English-language article list (not guaranteed to be complete):',
     articleList,
     '',
-    'Use the URL Context tool to open the supplied article URLs and read accessible article content, not just titles. Report up to three distinct recent market-relevant events supported by those pages. Merge duplicate coverage of the same event. If fewer than three distinct events are accessible, say how many you verified; never fill gaps from memory. For each event give its publication time if visible, what happened, source name, and a cautious possible market relevance. Cite the candidate number and exact article title. Mark whether you read the full article, an excerpt, or only its title. Separate reported facts from interpretation.',
+    'Use the URL Context tool to open supplied article URLs and read accessible article content, not just titles. Report up to three distinct recent market-relevant events supported by those pages. Merge duplicate coverage of the same event. If fewer than three distinct events are accessible, say how many you verified; never fill gaps from memory. For each event give publication time if visible, what happened, source name, and a cautious possible market relevance. Cite the candidate number and exact article title. Mark whether you read the full article, an excerpt, or only its title. Separate reported facts from interpretation.',
     '',
     'Return a concise but detailed report with these plain-text headings:',
     'CHART READ',
@@ -321,10 +327,11 @@ function buildPrompt(asset, timeframe, articles, sourceMode, previousReport) {
     'WHY THIS VIEW',
     'WHAT WOULD CHANGE THE VIEW',
     'UNCERTAINTIES',
-    'Under visible candle sequence, list each candle separately only when it is truly distinguishable; otherwise group dense/unreadable sections and explain why. Base BUY or SELL on legible chart evidence and source-verified news relevant to the named asset. Estimate the duration from the supplied candle timeframe and visible momentum/structure; do not invent precision. Use WAIT with no duration when the chart is unreadable, chart and news conflict, or available news cannot be matched to the asset. Do not force a direction to fill the report.',
+    'Under visible candle sequence, list each candle separately only when it is truly distinguishable; otherwise group dense/unreadable sections and explain why. Base BUY or SELL on legible chart evidence and source-verified news relevant to the named asset. Estimate duration from the supplied candle timeframe and visible momentum/structure; do not invent precision. Use WAIT with no duration when the chart is unreadable, chart and news conflict, or available news cannot be matched to the asset. Do not force a direction.',
+    newsWarning ? 'The current-news lookup failed. Clearly state that current news could not be checked and choose WAIT with N/A duration. Do not use memory as a replacement for current sources.' : '',
     previousReport ? '\nPrior report from this live session (for comparison only; verify everything against the current image and articles):\n' + previousReport.slice(0, 1800) : '',
     '',
-    'The directional view and duration are non-binding AI estimates for the user to consider; the user independently decides whether to act in Quotex. Do not click controls, place/manage trades, suggest stake sizes, or claim the outcome is guaranteed. Do not imply that a pattern predicts the next price. If evidence does not support a view, choose WAIT and say why.'
+    'The directional view and duration are non-binding AI estimates; the user independently decides whether to act in Quotex. Do not click controls, place or manage trades, suggest stake sizes, or claim the outcome is guaranteed. Do not imply that a pattern predicts the next price. If evidence does not support a view, choose WAIT and say why.'
   ].join('\n');
 }
 async function callGemini(apiKey, model, prompt, image, signal) {
@@ -341,7 +348,7 @@ async function callGemini(apiKey, model, prompt, image, signal) {
     tools: [{ url_context: {} }],
     generationConfig: {
       temperature: 0.2,
-      maxOutputTokens: 7000
+      maxOutputTokens: 4500
     }
   };
   const response = await fetchWithTimeout(endpoint, {
@@ -351,7 +358,7 @@ async function callGemini(apiKey, model, prompt, image, signal) {
       'x-goog-api-key': apiKey
     },
     body: JSON.stringify(requestBody)
-  }, 90000, signal);
+  }, 90000, signal, 'Gemini analysis');
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const apiMessage = payload && payload.error && payload.error.message;
@@ -411,7 +418,7 @@ async function requestQuotexPageAccess() {
   }
 }
 
-async function captureVisibleScreenshot() {
+async function captureVisibleScreenshot(captureLabel, sourceMode) {
   const tab = await getActiveQuotexTab();
   let screenshot;
   try {
@@ -420,39 +427,54 @@ async function captureVisibleScreenshot() {
     throw new Error('The browser could not capture this tab. Click the OnCore toolbar icon from the Quotex tab, then try again.');
   }
   if (!screenshot) throw new Error('No screenshot was captured. Keep the Quotex chart visible and try again.');
-  return compressScreenshot(screenshot, 'VISIBLE TAB');
+  const image = await compressScreenshot(screenshot, captureLabel || 'VISIBLE TAB');
+  image.sourceMode = sourceMode || 'screenshot';
+  return image;
 }
 
 async function captureLiveCanvas() {
   const tab = await getActiveQuotexTab();
+  let readerAttached = false;
   try {
     await chrome.scripting.executeScript({
       target: { tabId: tab.id, allFrames: true },
       files: ['chart-reader.js']
     });
+    readerAttached = true;
   } catch (_) {
     try {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         files: ['chart-reader.js']
       });
+      readerAttached = true;
     } catch (_) {
-      throw new Error('OnCore could not attach to this Quotex page. Click its toolbar icon from the chart tab and retry.');
+      readerAttached = false;
     }
   }
 
-  let result;
-  try {
-    result = await chrome.tabs.sendMessage(tab.id, { type: 'ONCORE_CAPTURE_CHART_CANVAS' });
-  } catch (_) {
-    throw new Error('No accessible chart canvas was found. Reload the Quotex tab once, or use the screenshot review option.');
+  let result = null;
+  if (readerAttached) {
+    try {
+      result = await chrome.tabs.sendMessage(tab.id, { type: 'ONCORE_CAPTURE_CHART_CANVAS' });
+    } catch (_) {
+      result = null;
+    }
   }
-  if (!result || !result.ok || !result.dataUrl) {
-    throw new Error(result && result.message ? result.message : 'No accessible chart canvas was found. Use the screenshot review option for this chart.');
+  if (result && result.ok && result.dataUrl) {
+    const image = await compressScreenshot(result.dataUrl, 'LIVE CHART CANVAS');
+    image.sourceMode = 'canvas';
+    return image;
   }
-  return compressScreenshot(result.dataUrl, 'LIVE CHART CANVAS');
-}
 
+  const reason = result && result.message ? result.message : 'The live chart canvas was blank or inaccessible.';
+  try {
+    setStatus(reason + ' Capturing the visible tab for this live review…', 'working');
+    return await captureVisibleScreenshot('LIVE TAB FALLBACK', 'live-screenshot');
+  } catch (error) {
+    throw new Error(reason + ' The visible-tab fallback also failed: ' + (error.message || 'capture unavailable'));
+  }
+}
 function stopLive(showStatus) {
   const wasRunning = liveTimer !== null;
   if (liveTimer !== null) clearInterval(liveTimer);
@@ -542,13 +564,23 @@ async function analyze(sourceMode, automatic, pageAccessReady) {
     await saveSettings(false);
 
     setStatus('Finding recent news about ' + asset + '…', 'working');
-    const articles = await fetchRecentArticles(asset, controller.signal);
-    renderArticles(articles);
-    ui.newsWindow.textContent = articles.length ? articles.length + ' SOURCES · 24H' : 'NO SOURCES · 24H';
+    let articles = [];
+    let newsWarning = '';
+    try {
+      articles = await fetchRecentArticles(asset, controller.signal);
+    } catch (error) {
+      if (controller.signal.aborted) throw error;
+      newsWarning = error && error.message ? error.message : 'The current-news feed is unavailable.';
+    }
+    renderArticles(articles, newsWarning);
+    ui.newsWindow.textContent = articles.length
+      ? articles.length + ' SOURCES · 24H'
+      : newsWarning ? 'NEWS UNAVAILABLE' : 'NO SOURCES · 24H';
     ui.results.classList.remove('is-hidden');
 
-    setStatus('Reading chart and accessible article pages…', 'working');
-    const report = await callGemini(apiKey, model, buildPrompt(asset, timeframe, articles, sourceMode, automatic ? lastLiveReport : ''), image, controller.signal);
+    setStatus(newsWarning ? 'News lookup failed; completing the chart review with news marked unavailable…' : 'Reading chart and accessible article pages…', 'working');
+    const effectiveMode = image.sourceMode || sourceMode;
+    const report = await callGemini(apiKey, model, buildPrompt(asset, timeframe, articles, effectiveMode, automatic ? lastLiveReport : '', newsWarning), image, controller.signal);
     ui.report.textContent = report;
     ui.reportTime.textContent = new Date().toLocaleString();
     if (automatic) {
@@ -592,5 +624,4 @@ window.addEventListener('pagehide', () => stopLive(false));
 loadSettings().catch(() => {
   setStatus('Could not load OnCore settings. Reload the extension and try again.', 'error');
 });
-
 
