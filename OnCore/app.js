@@ -357,9 +357,17 @@ async function callGemini(apiKey, model, prompt, image, signal) {
   return reportText.trim();
 }
 
+function getTabUrl(tab) {
+  return tab && (tab.url || tab.pendingUrl) ? String(tab.url || tab.pendingUrl) : '';
+}
+
+function getTabHostname(tab) {
+  try { return new URL(getTabUrl(tab)).hostname.toLowerCase(); }
+  catch (_) { return ''; }
+}
+
 function isQuotexTab(tab) {
-  let hostname = '';
-  try { hostname = new URL(tab && tab.url).hostname.toLowerCase(); } catch (_) {}
+  const hostname = getTabHostname(tab);
   return hostname === 'quotex.com' || hostname.endsWith('.quotex.com') ||
     hostname === 'qxbroker.com' || hostname.endsWith('.qxbroker.com');
 }
@@ -368,7 +376,15 @@ async function getActiveQuotexTab() {
   const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   const tab = tabs && tabs[0];
   if (!tab || !Number.isInteger(tab.windowId)) throw new Error('Open the Quotex chart in the active browser tab first.');
-  if (!isQuotexTab(tab)) throw new Error('Open a Quotex chart in the active tab, then try again.');
+  if (!getTabUrl(tab)) {
+    throw new Error('Chrome has not granted OnCore access to this tab yet. Close the side panel, select the Quotex tab, then click the OnCore toolbar icon to reopen it and try again.');
+  }
+  if (!isQuotexTab(tab)) {
+    const hostname = getTabHostname(tab);
+    throw new Error(hostname
+      ? 'The active tab is ' + hostname + '. Switch to your Quotex chart, then reopen OnCore from its toolbar icon.'
+      : 'OnCore could not read the active tab address. Reopen OnCore from the Quotex toolbar tab and try again.');
+  }
   return tab;
 }
 

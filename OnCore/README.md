@@ -22,6 +22,8 @@ Both modes send a visual image, not raw quotes or OHLC values. They cannot promi
 
 Supported page hosts are `quotex.com` and `qxbroker.com`. A platform layout change, protected canvas, browser restriction, or login-specific design can prevent live capture. Reload the Quotex tab after installing or updating the extension.
 
+If OnCore says it cannot read the active tab, close the side panel, select the Quotex chart tab, and click the OnCore toolbar icon to reopen the panel. Chrome grants `activeTab` access when the extension is invoked, so opening the panel on another tab and then switching tabs may leave OnCore without access to the chart tab.
+
 ## News sources and AI service
 
 OnCore searches GDELT's public English-language article index for matching articles indexed in the last 24 hours, then sends up to six candidate links to Gemini URL Context. Gemini attempts to read those linked pages and report distinct, relevant events. GDELT coverage is not complete. A publisher may block full article access, show only an excerpt, or require a subscription. If fewer than three distinct events can be verified, the report should say so instead of filling gaps from memory.
