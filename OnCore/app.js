@@ -56,7 +56,7 @@ function updateButton() {
 
 function updateKeyState() {
   const hasKey = Boolean(ui.apiKey.value.trim());
-  ui.keyState.textContent = hasKey ? 'Key entered' : 'Needs a free API key';
+  ui.keyState.textContent = hasKey ? 'Key entered' : 'Needs Gemini API key';
   ui.keyState.style.color = hasKey ? 'var(--mint)' : '';
 }
 
