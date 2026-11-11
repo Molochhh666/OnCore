@@ -2,6 +2,11 @@ const DEFAULT_MODEL = 'gemini-3.8-flash';
 const MODEL_ALLOWLIST = new Set(['gemini-3.8-flash', 'gemini-3.5-flash-lite']);
 const MAX_ARTICLES = 4;
 const QUOTEX_ORIGINS = ['https://*.quotex.com/*', 'https://*.qxbroker.com/*'];
+const NEWS_CACHE_TTL_MS = 30000;
+const NEWS_MIN_INTERVAL_MS = 5500;
+const NEWS_RETRY_DELAY_MS = 5500;
+let recentNewsCache = null;
+let lastNewsRequestAt = 0;
 let isBusy = false;
 let liveTimer = null;
 let liveAbortController = null;
@@ -179,7 +184,36 @@ function uniqueArticles(rawArticles) {
   return results;
 }
 
+function waitForNewsDelay(delayMs, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal && signal.aborted) {
+      reject(new Error('Live reading stopped.'));
+      return;
+    }
+    let timer;
+    const cleanup = () => {
+      clearTimeout(timer);
+      if (signal) signal.removeEventListener('abort', onAbort);
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(new Error('Live reading stopped.'));
+    };
+    timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, Math.max(0, delayMs));
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 async function fetchRecentArticles(asset, signal) {
+  const assetKey = asset.trim().toLowerCase();
+  if (recentNewsCache && recentNewsCache.assetKey === assetKey &&
+      Date.now() - recentNewsCache.savedAt < NEWS_CACHE_TTL_MS) {
+    return recentNewsCache.articles;
+  }
+
   const query = getNewsQuery(asset);
   const params = new URLSearchParams({
     query: query + ' sourcelang:english',
@@ -189,25 +223,46 @@ async function fetchRecentArticles(asset, signal) {
     maxrecords: '20',
     sort: 'datedesc'
   });
-  const response = await fetchWithTimeout('https://api.gdeltproject.org/api/v2/doc/doc?' + params.toString(), {
-    headers: { 'Accept': 'application/json' }
-  }, 20000, signal, 'the current-news lookup');
-  const responseBody = await response.text();
-  if (!response.ok) {
-    const detail = responseBody.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 180);
-    throw new Error('The current-news feed returned HTTP ' + response.status + (detail ? ': ' + detail : '.'));
+  const url = 'https://api.gdeltproject.org/api/v2/doc/doc?' + params.toString();
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (signal && signal.aborted) throw new Error('Live reading stopped.');
+    const cooldown = NEWS_MIN_INTERVAL_MS - (Date.now() - lastNewsRequestAt);
+    if (cooldown > 0) await waitForNewsDelay(cooldown, signal);
+    if (signal && signal.aborted) throw new Error('Live reading stopped.');
+    lastNewsRequestAt = Date.now();
+
+    const response = await fetchWithTimeout(url, {
+      headers: { 'Accept': 'application/json' }
+    }, 20000, signal, 'the current-news lookup');
+    const responseBody = await response.text();
+    if (response.status === 429 && attempt === 0) {
+      const retryAfterSeconds = Number(response.headers && response.headers.get('Retry-After'));
+      const retryDelay = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+        ? Math.max(NEWS_RETRY_DELAY_MS, Math.min(30000, retryAfterSeconds * 1000))
+        : NEWS_RETRY_DELAY_MS;
+      await waitForNewsDelay(retryDelay, signal);
+      continue;
+    }
+    if (!response.ok) {
+      const detail = responseBody.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 180);
+      throw new Error('The current-news feed returned HTTP ' + response.status + (detail ? ': ' + detail : '.'));
+    }
+    let payload;
+    try {
+      payload = JSON.parse(responseBody);
+    } catch (_) {
+      const detail = responseBody.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 180);
+      throw new Error('The current-news feed rejected the search query' + (detail ? ': ' + detail : '.'));
+    }
+    if (!payload || !Array.isArray(payload.articles)) {
+      throw new Error('The current-news service returned an unreadable response. No news-based analysis was made.');
+    }
+    const articles = uniqueArticles(payload.articles);
+    recentNewsCache = { assetKey, savedAt: Date.now(), articles };
+    return articles;
   }
-  let payload;
-  try {
-    payload = JSON.parse(responseBody);
-  } catch (_) {
-    const detail = responseBody.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 180);
-    throw new Error('The current-news feed rejected the search query' + (detail ? ': ' + detail : '.'));
-  }
-  if (!payload || !Array.isArray(payload.articles)) {
-    throw new Error('The current-news service returned an unreadable response. No news-based analysis was made.');
-  }
-  return uniqueArticles(payload.articles);
+  throw new Error('The current-news feed is still rate-limiting requests. Wait briefly, then review again.');
 }
 async function fetchWithTimeout(url, options, timeoutMs, externalSignal, requestLabel) {
   const controller = new AbortController();
@@ -334,7 +389,7 @@ function buildPrompt(asset, timeframe, articles, sourceMode, previousReport, new
     'The directional view and duration are non-binding AI estimates; the user independently decides whether to act in Quotex. Do not click controls, place or manage trades, suggest stake sizes, or claim the outcome is guaranteed. Do not imply that a pattern predicts the next price. If evidence does not support a view, choose WAIT and say why.'
   ].join('\n');
 }
-async function callGemini(apiKey, model, prompt, image, signal) {
+async function callGemini(apiKey, model, prompt, image, signal, useUrlContext) {
   if (!MODEL_ALLOWLIST.has(model)) throw new Error('Choose one of the supported Gemini models in AI connection settings.');
   const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent';
   const requestBody = {
@@ -351,6 +406,7 @@ async function callGemini(apiKey, model, prompt, image, signal) {
       maxOutputTokens: 4500
     }
   };
+  if (!useUrlContext) delete requestBody.tools;
   const response = await fetchWithTimeout(endpoint, {
     method: 'POST',
     headers: {
@@ -423,8 +479,9 @@ async function captureVisibleScreenshot(captureLabel, sourceMode) {
   let screenshot;
   try {
     screenshot = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
-  } catch (_) {
-    throw new Error('The browser could not capture this tab. Click the OnCore toolbar icon from the Quotex tab, then try again.');
+  } catch (error) {
+    const detail = error && error.message ? ' Chrome said: ' + error.message : '';
+    throw new Error('Chrome could not capture the Quotex tab. Close OnCore, select the Quotex tab, then click the OnCore toolbar icon once to reopen it and grant temporary tab access.' + detail);
   }
   if (!screenshot) throw new Error('No screenshot was captured. Keep the Quotex chart visible and try again.');
   const image = await compressScreenshot(screenshot, captureLabel || 'VISIBLE TAB');
@@ -580,7 +637,7 @@ async function analyze(sourceMode, automatic, pageAccessReady) {
 
     setStatus(newsWarning ? 'News lookup failed; completing the chart review with news marked unavailable…' : 'Reading chart and accessible article pages…', 'working');
     const effectiveMode = image.sourceMode || sourceMode;
-    const report = await callGemini(apiKey, model, buildPrompt(asset, timeframe, articles, effectiveMode, automatic ? lastLiveReport : '', newsWarning), image, controller.signal);
+    const report = await callGemini(apiKey, model, buildPrompt(asset, timeframe, articles, effectiveMode, automatic ? lastLiveReport : '', newsWarning), image, controller.signal, articles.length > 0);
     ui.report.textContent = report;
     ui.reportTime.textContent = new Date().toLocaleString();
     if (automatic) {
