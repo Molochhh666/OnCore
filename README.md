@@ -1,50 +1,57 @@
-# TradingGuru
+# OnCore
 
-TradingGuru is a free Windows app for reviewing forex headlines alongside your MetaTrader 5 chart data. It runs on your PC, uses a free local AI model, and does not place or manage trades. The one-click MT5 setup is for Windows 10/11 64-bit PCs.
+OnCore is a Chromium side-panel extension for visual chart and current-news research. It offers two ways to provide a chart image: periodic reading of the largest accessible canvas on the active Quotex page, or a one-time capture of the visible browser tab. Its result is a one-line `NEXT CANDLE: BUY` or `NEXT CANDLE: SELL` decision. It never places or manages trades.
 
-## Download and start
+## Chart review modes
 
-1. Open the [TradingGuru GitHub page](https://github.com/Molochhh666/TradingGuru).
-2. Click the green **Code** button, then **Download ZIP**.
-3. In your Downloads folder, right-click the ZIP and choose **Extract All**.
-4. Open the extracted folder and double-click **TradingGuru.bat**.
+- **Live chart reading** injects a small reader only after you start live mode. At your chosen 1, 5, or 15 minute interval, it captures the largest visible canvas it can access from the active Quotex page. If that canvas is blank or blocked, it automatically captures the visible tab for that review. Keep the side panel open and the Quotex tab active. Each interval uses an AI request and can reach the provider's free quota.
+- **Screenshot review** captures the visible tab once after you click its button. It does not capture the entire page or run repeatedly.
+- If the page does not expose a readable canvas, live mode uses a visible-tab image as a fallback. The fallback can include account details visible in the browser, so hide balances and personal information before starting.
 
-The first run sets up the app for you. It creates private settings on your PC, installs the MetaTrader 5 data connector, and downloads the local AI model (about 2 GB). Keep the black setup window open while it works. It will open TradingGuru in your browser when ready. Leave that window open while using the app; close it to stop TradingGuru.
+Both modes send a visual image, not raw quotes or OHLC values. They cannot promise an exact candle-by-candle reading, exact price levels, or pattern detection. The selected live interval is the AI review cadence; it does not change the chart's candle timeframe. Choose the displayed candle timeframe in the Quotex chart and set the matching timeframe in OnCore.
 
-### One-time installs
+## Install in Chrome or Edge
 
-The start file checks for the free programs the app needs. If Python is missing or too new, it offers to install Python 3.14 alongside your current version. If that option is unavailable, it opens the official Python download page. If Ollama is missing, it opens Ollama's official download page:
+1. Download this repository.
+2. Open `chrome://extensions` in Chrome or `edge://extensions` in Edge.
+3. Turn on **Developer mode**, choose **Load unpacked**, and select the `OnCore` folder.
+4. Open a Quotex chart and click the OnCore toolbar icon to open the side panel.
+5. Enter the market or asset and the timeframe shown on the chart.
+6. Expand **AI connection**, create a Gemini API key in [Google AI Studio](https://aistudio.google.com/app/apikey), paste it, and save it on this device.
+7. Check the chart-sharing notice. Choose screenshot review or start live chart reading.
 
-- [Python 3.14 for Windows](https://www.python.org/downloads/release/python-31410/) — if you install it manually, choose the **Windows installer (64-bit)**. Do not remove a newer Python version. The launcher picks a compatible version from Python 3.8 to 3.14 automatically.
-- [Ollama for Windows](https://ollama.com/download/windows) — install Ollama, then run **TradingGuru.bat** again.
+Supported page hosts are `quotex.com` and `qxbroker.com`. A platform layout change, protected canvas, browser restriction, or login-specific design can prevent live capture. Reload the Quotex tab after installing or updating the extension.
 
-Keep an internet connection during the first setup so the connector and AI model can download. Later starts skip setup work that is already complete.
+If screenshot capture fails, close the side panel, select the Quotex chart tab, and click the OnCore toolbar icon once to reopen it. OnCore opens the panel from that click so Chrome can grant temporary access to the active Quotex tab. The extension also requests site access only for Quotex/QXBroker when you start a review.
 
-The MT5 Python connector currently publishes Windows x86-64 packages. The one-click live MT5 feed therefore does not support macOS, Linux, 32-bit Windows, or Windows ARM directly. On those systems, the app can still analyze imported candle CSV files, but the MT5 live feed needs a supported Windows x64 computer.
+## News sources and AI service
 
-## Use your MT5 chart
+OnCore searches GDELT's public English-language article index for matching articles indexed in the last 24 hours, then sends up to four candidate links to Gemini URL Context. Successful news results are cached for 30 seconds per asset; requests are spaced at least 5.5 seconds apart, and one HTTP 429 is retried after a delay. Gemini attempts to read accessible article pages as context for the one-line decision. GDELT coverage is not complete, and publishers may block full article access. If news lookup fails or returns no matching articles, OnCore asks Gemini to make a chart-only decision. It uses a local candle-color fallback if the AI request fails.
 
-Open MetaTrader 5, sign in to your broker, and make sure the currency pair you want is visible in the terminal. Then start TradingGuru. The default configuration reads candles from that local MT5 terminal. It does not read your account balance or positions, and it cannot send orders.
+The extension has no subscription or hosted server. The news list does not require an API key. Gemini requires your own key and its free quota, model availability, and billing terms are controlled by Google and can change. Set up your Google project with the billing choices you want before using it. OnCore cannot guarantee every request will remain free.
 
-If the app says a broker symbol is unavailable, your broker may use a suffix such as `EURUSD.a` instead of `EURUSD`. Check the exact symbol name in MT5; the pair mapping is in the private `config.json` file beside the app. You can ask for help adjusting it.
+## Accuracy and safe use
 
-The app can also import a candle CSV with these columns: `datetime,open,high,low,close`. Use UTC timestamps and at least 21 rows.
+Images are not a live broker feed and do not contain exact raw prices. Candle visibility, page zoom, overlays, browser capture limits, inaccessible iframes, news coverage, and AI interpretation can all affect the review. The one-line next-candle decision is a non-binding AI estimate and can be wrong. OnCore asks Gemini to choose the stronger BUY or SELL direction from the chart when news is unavailable. A local candle-color fallback can be used if Gemini fails. Signals can be wrong; no outcome is guaranteed.
 
-## What the app shows
+OnCore is read-only: it does not click Quotex controls or place trades. Quotex's [published trading rules](https://quotex.com/documents/en/Rules_of_Trading_operations_QTX.pdf) address automated software that performs operations without the user's direct participation. Check the platform's current rules before using any browser add-on.
 
-- Public headlines from GDELT. It searches headlines, not full articles, and is not a low-latency news service.
-- Broker candles and bid/ask data from your local MT5 terminal.
-- A local AI classification and chart indicators (EMA 9, EMA 21, RSI 14, and ATR 14).
-- A BUY BIAS or SELL BIAS only when recent news and fresh chart data agree. Otherwise, it shows WAIT.
-- An optional exit-level alert while the app is open. The alert cannot close a trade.
+## Privacy and permissions
 
-Signals are experimental analysis, not a promise of profit or financial advice. News can be misread or already priced in; prices can move quickly. The alignment score is not a probability of winning, and an alert level is not a guaranteed execution price. Check the original news and your broker before making decisions.
+When you analyze, OnCore sends the captured chart image, asset, timeframe, and selected article links to Google's Gemini API using your key. Google AI Studio's data use terms apply to API traffic. Hide account balances, personal information, account identifiers, and anything else you do not want to send before capturing.
 
-## Privacy and cost
+The API key and basic preferences are stored in `chrome.storage.local` in this browser profile. Images and generated reports stay in the open side panel's memory and are discarded when it closes or reloads. OnCore does not send images or keys to a server it operates.
 
-The app and local AI model are free. Headlines are requested from GDELT over the internet; chart data comes from your local MT5 terminal. The AI analysis runs through Ollama on your PC. Do not put broker passwords or account credentials in the app. A local `config.json` is created on first start and is excluded from GitHub.
+- `activeTab` lets the extension capture or access the current page after you invoke OnCore.
+- `scripting` is used to add the canvas reader only when you start live mode.
+- On the first review, Chrome asks for optional access to Quotex or QXBroker pages. This scoped page access lets OnCore identify the chart tab and inject the canvas reader; you can revoke it in the extension's site access settings.
+- `storage` saves the API key and preferences locally in the browser profile.
+- `sidePanel` displays the OnCore interface beside the chart.
+- Host access is limited to GDELT's article-list API and Google's Gemini API.
+
+There are no broker credentials, private Quotex feed interceptions, external JavaScript libraries, or automated trade actions.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+OnCore is covered by the MIT license at the root of this repository.
 
