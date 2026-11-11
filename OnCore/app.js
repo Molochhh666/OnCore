@@ -97,38 +97,35 @@ function getNewsQuery(assetInput) {
   const original = assetInput.trim();
   const compact = original.toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/OTC$/, '');
   const lower = original.toLowerCase();
+  const orGroup = (terms) => '(' + terms.filter(Boolean).join(' OR ') + ')';
 
-  if (/\b(gold|xau|bullion)\b/.test(lower) || compact.includes('XAU')) return '"gold" OR bullion OR XAU';
-  if (/\b(bitcoin|btc)\b/.test(lower) || compact.includes('BTC')) return '"Bitcoin" OR BTC OR cryptocurrency';
-  if (/\b(ethereum|ether|eth)\b/.test(lower) || compact.includes('ETH')) return '"Ethereum" OR ETH OR Ether';
-  if (/\b(sol|solana)\b/.test(lower) || compact.includes('SOL')) return 'Solana OR SOL OR cryptocurrency';
-  if (/\b(silver|xag)\b/.test(lower) || compact.includes('XAG')) return '"silver" OR bullion OR XAG';
+  if (/\b(gold|xau|bullion)\b/.test(lower) || compact.includes('XAU')) return orGroup(['gold', 'bullion', 'XAU']);
+  if (/\b(bitcoin|btc)\b/.test(lower) || compact.includes('BTC')) return orGroup(['"Bitcoin"', 'BTC', 'cryptocurrency']);
+  if (/\b(ethereum|ether|eth)\b/.test(lower) || compact.includes('ETH')) return orGroup(['"Ethereum"', 'ETH', 'Ether']);
+  if (/\b(sol|solana)\b/.test(lower) || compact.includes('SOL')) return orGroup(['Solana', 'SOL', 'cryptocurrency']);
+  if (/\b(silver|xag)\b/.test(lower) || compact.includes('XAG')) return orGroup(['silver', 'bullion', 'XAG']);
 
   const currencies = {
-    USD: '"US dollar" OR Federal Reserve OR Fed',
-    EUR: 'euro OR ECB OR "European Central Bank"',
-    GBP: '"British pound" OR "Bank of England"',
-    JPY: 'yen OR "Bank of Japan"',
-    CHF: '"Swiss franc" OR "Swiss National Bank"',
-    AUD: '"Australian dollar" OR "Reserve Bank of Australia"',
-    CAD: '"Canadian dollar" OR "Bank of Canada"',
-    NZD: '"New Zealand dollar" OR "Reserve Bank of New Zealand"'
+    USD: ['"US dollar"', '"Federal Reserve"', 'Fed'],
+    EUR: ['euro', 'ECB', '"European Central Bank"'],
+    GBP: ['"British pound"', '"Bank of England"'],
+    JPY: ['yen', '"Bank of Japan"'],
+    CHF: ['"Swiss franc"', '"Swiss National Bank"'],
+    AUD: ['"Australian dollar"', '"Reserve Bank of Australia"'],
+    CAD: ['"Canadian dollar"', '"Bank of Canada"'],
+    NZD: ['"New Zealand dollar"', '"Reserve Bank of New Zealand"']
   };
 
   const pairMatch = compact.match(/^(USD|EUR|GBP|JPY|CHF|AUD|CAD|NZD)(USD|EUR|GBP|JPY|CHF|AUD|CAD|NZD)$/);
   if (pairMatch) {
-    const pair = compact;
-    const terms = [pair];
-    if (currencies[pairMatch[1]]) terms.push(currencies[pairMatch[1]]);
-    if (currencies[pairMatch[2]]) terms.push(currencies[pairMatch[2]]);
-    return terms.join(' OR ');
+    return orGroup([compact].concat(currencies[pairMatch[1]] || [], currencies[pairMatch[2]] || []));
   }
 
   const safePhrase = original.replace(/["\\]/g, ' ').replace(/\s+/g, ' ').trim();
   if (!safePhrase) throw new Error('Enter an asset or market name first.');
-  return '"' + safePhrase + '" OR ' + safePhrase.replace(/[^A-Za-z0-9 ]/g, ' ').trim();
+  const broadTerm = safePhrase.replace(/[^A-Za-z0-9 ]/g, ' ').trim();
+  return orGroup(['"' + safePhrase + '"', broadTerm]);
 }
-
 function parseSeenDate(value) {
   if (!value) return '';
   const match = String(value).match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?$/);
@@ -186,23 +183,32 @@ async function fetchRecentArticles(asset, signal) {
   const query = getNewsQuery(asset);
   const params = new URLSearchParams({
     query: query + ' sourcelang:english',
-    mode: 'ArtList',
+    mode: 'artlist',
     format: 'json',
     timespan: '24h',
     maxrecords: '30',
-    sort: 'DateDesc'
+    sort: 'datedesc'
   });
   const response = await fetchWithTimeout('https://api.gdeltproject.org/api/v2/doc/doc?' + params.toString(), {
     headers: { 'Accept': 'application/json' }
   }, 15000, signal);
-  if (!response.ok) throw new Error('The current-news feed returned HTTP ' + response.status + '.');
-  const payload = await response.json();
+  const responseBody = await response.text();
+  if (!response.ok) {
+    const detail = responseBody.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 180);
+    throw new Error('The current-news feed returned HTTP ' + response.status + (detail ? ': ' + detail : '.'));
+  }
+  let payload;
+  try {
+    payload = JSON.parse(responseBody);
+  } catch (_) {
+    const detail = responseBody.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 180);
+    throw new Error('The current-news feed rejected the search query' + (detail ? ': ' + detail : '.'));
+  }
   if (!payload || !Array.isArray(payload.articles)) {
     throw new Error('The current-news service returned an unreadable response. No news-based analysis was made.');
   }
   return uniqueArticles(payload.articles);
 }
-
 async function fetchWithTimeout(url, options, timeoutMs, externalSignal) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -301,7 +307,7 @@ function buildPrompt(asset, timeframe, articles, sourceMode, previousReport) {
     'Current-news candidates returned by GDELT from its last-24-hour English-language article list (not guaranteed to be complete):',
     articleList,
     '',
-    'Use the URL Context tool to open the supplied article URLs and read the accessible article content, not just titles. Report three distinct recent market-relevant events only when the source pages support them. If two sources describe the same event, treat them as one event. If fewer than three distinct items are accessible, say how many you could verify; do not fill gaps with memory or guesses. For each event give the publication time if visible, what happened in plain language, source name, and a cautious possible market relevance. Cite the candidate number and exact article title so the reader can match it to the source cards. Mark whether you could read full article text, only an excerpt, or only the title. Separate reported facts from your interpretation.',
+    'Use the URL Context tool to open the supplied article URLs and read accessible article content, not just titles. Report up to three distinct recent market-relevant events supported by those pages. Merge duplicate coverage of the same event. If fewer than three distinct events are accessible, say how many you verified; never fill gaps from memory. For each event give its publication time if visible, what happened, source name, and a cautious possible market relevance. Cite the candidate number and exact article title. Mark whether you read the full article, an excerpt, or only its title. Separate reported facts from interpretation.',
     '',
     'Return a concise but detailed report with these plain-text headings:',
     'CHART READ',
@@ -309,14 +315,18 @@ function buildPrompt(asset, timeframe, articles, sourceMode, previousReport) {
     'PATTERNS AND LEVELS',
     'THREE DISTINCT NEWS EVENTS',
     'HOW CHART AND NEWS RELATE',
+    'DIRECTIONAL VIEW: choose exactly BUY, SELL, or WAIT',
+    'SUGGESTED DURATION: give one whole-number estimate in minutes from 1 to 15 only for BUY or SELL; for WAIT write N/A',
+    'SIGNAL STRENGTH: Weak, Moderate, or Strong; this describes evidence quality, not a probability of profit',
+    'WHY THIS VIEW',
+    'WHAT WOULD CHANGE THE VIEW',
     'UNCERTAINTIES',
-    'Under visible candle sequence, list each candle separately only when it is truly distinguishable; otherwise group an unreadable/dense section and explain why. The reported technical tilt must be descriptive (bullish pressure, bearish pressure, mixed, or unclear), not a trade instruction.',
+    'Under visible candle sequence, list each candle separately only when it is truly distinguishable; otherwise group dense/unreadable sections and explain why. Base BUY or SELL on legible chart evidence and source-verified news relevant to the named asset. Estimate the duration from the supplied candle timeframe and visible momentum/structure; do not invent precision. Use WAIT with no duration when the chart is unreadable, chart and news conflict, or available news cannot be matched to the asset. Do not force a direction to fill the report.',
     previousReport ? '\nPrior report from this live session (for comparison only; verify everything against the current image and articles):\n' + previousReport.slice(0, 1800) : '',
     '',
-    'Do not issue buy/sell instructions, binary-option entries, expiry durations, stake sizes, confidence percentages, or executable trades. Do not imply that a pattern predicts the next price. If the picture or sources do not support a conclusion, say so directly. This is research, not a recommendation or guarantee.'
+    'The directional view and duration are non-binding AI estimates for the user to consider; the user independently decides whether to act in Quotex. Do not click controls, place/manage trades, suggest stake sizes, or claim the outcome is guaranteed. Do not imply that a pattern predicts the next price. If evidence does not support a view, choose WAIT and say why.'
   ].join('\n');
 }
-
 async function callGemini(apiKey, model, prompt, image, signal) {
   if (!MODEL_ALLOWLIST.has(model)) throw new Error('Choose one of the supported Gemini models in AI connection settings.');
   const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent';
@@ -582,4 +592,5 @@ window.addEventListener('pagehide', () => stopLive(false));
 loadSettings().catch(() => {
   setStatus('Could not load OnCore settings. Reload the extension and try again.', 'error');
 });
+
 

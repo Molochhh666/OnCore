@@ -1,6 +1,6 @@
 # OnCore
 
-OnCore is a Chromium side-panel extension for visual chart and current-news research. It offers two ways to provide a chart image: periodic reading of the largest accessible canvas on the active Quotex page, or a one-time capture of the visible browser tab. It never places or manages trades.
+OnCore is a Chromium side-panel extension for visual chart and current-news research. It offers two ways to provide a chart image: periodic reading of the largest accessible canvas on the active Quotex page, or a one-time capture of the visible browser tab. Its report includes a non-binding BUY, SELL, or WAIT view and an estimated duration in minutes when the evidence supports one. It never places or manages trades.
 
 ## Chart review modes
 
@@ -32,7 +32,7 @@ The extension has no subscription or hosted server. The news list does not requi
 
 ## Accuracy and safe use
 
-Images are not a live broker feed and do not contain exact raw prices. Candle visibility, page zoom, overlays, browser capture limits, inaccessible iframes, and AI interpretation can all affect the review. Reports describe visible evidence and uncertainty; they do not provide buy/sell instructions, binary-option entries, expiry times, stake sizes, executable trades, or guaranteed outcomes.
+Images are not a live broker feed and do not contain exact raw prices. Candle visibility, page zoom, overlays, browser capture limits, inaccessible iframes, news coverage, and AI interpretation can all affect the review. The BUY/SELL/WAIT view and estimated duration are non-binding, can be wrong, and are not calibrated probabilities. The model should return WAIT and no duration when evidence is unclear or conflicting. Consider the cited evidence and uncertainty before making your own decision; no outcome is guaranteed.
 
 OnCore is read-only: it does not click Quotex controls or place trades. Quotex's [published trading rules](https://quotex.com/documents/en/Rules_of_Trading_operations_QTX.pdf) address automated software that performs operations without the user's direct participation. Check the platform's current rules before using any browser add-on.
 
@@ -54,4 +54,5 @@ There are no broker credentials, private Quotex feed interceptions, external Jav
 ## License
 
 OnCore is covered by the MIT license at the root of this repository.
+
 
