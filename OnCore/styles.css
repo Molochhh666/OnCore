@@ -262,17 +262,21 @@ h2 { font-size: 15px; }
 .news-empty { margin: 11px 0 0; color: #9ba9b3; font-size: 11px; line-height: 1.5; }
 .report-heading { margin-top: 18px; padding-top: 13px; border-top: 1px solid #273543; }
 .report {
-  min-height: 100px;
-  margin: 11px 0 0;
-  padding: 13px;
+  min-height: 0;
+  margin: 9px 0 0;
+  padding: 16px 12px;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   border: 1px solid #273543;
   border-radius: 10px;
   background: #0b1219;
-  color: #d3dee5;
-  font: 11px/1.65 ui-sans-serif, system-ui, sans-serif;
+  color: var(--amber);
+  text-align: center;
+  font: 800 18px/1.35 ui-sans-serif, system-ui, sans-serif;
 }
+.report[data-decision="buy"] { color: var(--mint); }
+.report[data-decision="sell"] { color: var(--red); }
+.report[data-decision="wait"] { color: var(--amber); }
 .footer { display: flex; justify-content: space-between; margin: 14px 2px 5px; color: #62717f; font-size: 9px; }
 .is-hidden { display: none !important; }
 

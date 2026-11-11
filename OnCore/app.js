@@ -10,7 +10,6 @@ let lastNewsRequestAt = 0;
 let isBusy = false;
 let liveTimer = null;
 let liveAbortController = null;
-let lastLiveReport = '';
 
 const ui = {
   asset: document.getElementById('asset'),
@@ -344,51 +343,34 @@ async function compressScreenshot(dataUrl, captureLabel) {
   };
 }
 
-function buildPrompt(asset, timeframe, articles, sourceMode, previousReport, newsWarning) {
+function buildPrompt(asset, timeframe, articles, sourceMode, newsWarning) {
   const articleList = articles.length
     ? articles.map((article, index) => {
-        return (index + 1) + '. ' + article.title + '\n   Publisher: ' + article.domain +
-          '\n   GDELT indexed at: ' + (article.seenAt || 'not supplied') + '\n   URL: ' + article.url;
+        return (index + 1) + '. ' + article.title + ' | ' + article.domain +
+          ' | indexed ' + (article.seenAt || 'time unavailable') + ' | ' + article.url;
       }).join('\n')
     : newsWarning
-      ? 'No article candidates are available because the current-news lookup failed: ' + newsWarning + '. Do not use model memory to invent current events.'
-      : 'No matching articles were found by the current-news feed.';
-  const now = new Date().toISOString();
+      ? 'Current news is unavailable: ' + newsWarning
+      : 'No matching current news articles were found.';
+
+  const captureDescription = sourceMode === 'canvas'
+    ? 'The image is the largest accessible live chart canvas.'
+    : sourceMode === 'live-screenshot'
+      ? 'The image is a visible-tab screenshot used as the live chart fallback.'
+      : 'The image is a one-time screenshot of the visible browser tab.';
 
   return [
-    'OnCore chart and news review. Current time: ' + now + ' (UTC).',
-    'Asset supplied by user: ' + asset + '. Chart timeframe supplied by user: ' + timeframe + '.',
-    '',
-    sourceMode === 'canvas'
-      ? 'The attached image is a live copy of the largest accessible canvas rendered on the active Quotex page. It is a visual chart image, not raw market data. Read the visible candles from left to right as far as they are individually distinguishable. Describe bullish/bearish candle color, body and wick structure, sequences, and clear formations. Do not invent OHLC values, indicators, exact levels, candle counts, or patterns that are not legible. Say plainly if the chart canvas is too small, cropped, obstructed, or too dense for a candle-by-candle read.'
-      : sourceMode === 'live-screenshot'
-        ? 'The attached image is an automatic visible-tab capture taken during this live review because the chart canvas was blank or inaccessible. It is not raw market data. Read the visible candles from left to right as far as they are individually distinguishable. Do not invent OHLC values, indicators, exact levels, candle counts, or patterns that are not legible. Say plainly if the image is cropped, obstructed, or too dense for a candle-by-candle read.'
-        : 'The attached image is a one-time screenshot of the visible browser tab, not raw market data. Read the visible candles from left to right as far as they are individually distinguishable. Describe bullish/bearish candle color, body and wick structure, sequences, and clear formations. Do not invent OHLC values, indicators, exact levels, candle counts, or patterns that are not legible. Say plainly if the screenshot is too small, cropped, obstructed, or too dense for a candle-by-candle read.',
-    '',
-    'Current-news candidates returned by GDELT from its last-24-hour English-language article list (not guaranteed to be complete):',
+    'Analyze the attached current chart for the NEXT candle only.',
+    'Asset: ' + asset + '. Chart timeframe: ' + timeframe + '. ' + captureDescription,
+    'Inspect the visible candle sequence, bodies and wicks, short-term structure, and clear support or resistance. Compare with the asset-matched current article sources below; use URL Context to read accessible article content. Do not invent unreadable candle details, prices, or news.',
+    'Current article candidates (last 24 hours):',
     articleList,
-    '',
-    'Use the URL Context tool to open supplied article URLs and read accessible article content, not just titles. Report up to three distinct recent market-relevant events supported by those pages. Merge duplicate coverage of the same event. If fewer than three distinct events are accessible, say how many you verified; never fill gaps from memory. For each event give publication time if visible, what happened, source name, and a cautious possible market relevance. Cite the candidate number and exact article title. Mark whether you read the full article, an excerpt, or only its title. Separate reported facts from interpretation.',
-    '',
-    'Return a concise but detailed report with these plain-text headings:',
-    'CHART READ',
-    'VISIBLE CANDLE SEQUENCE',
-    'PATTERNS AND LEVELS',
-    'THREE DISTINCT NEWS EVENTS',
-    'HOW CHART AND NEWS RELATE',
-    'DIRECTIONAL VIEW: choose exactly BUY, SELL, or WAIT',
-    'SUGGESTED DURATION: give one whole-number estimate in minutes from 1 to 15 only for BUY or SELL; for WAIT write N/A',
-    'SIGNAL STRENGTH: Weak, Moderate, or Strong; this describes evidence quality, not a probability of profit',
-    'WHY THIS VIEW',
-    'WHAT WOULD CHANGE THE VIEW',
-    'UNCERTAINTIES',
-    'Under visible candle sequence, list each candle separately only when it is truly distinguishable; otherwise group dense/unreadable sections and explain why. Base BUY or SELL on legible chart evidence and source-verified news relevant to the named asset. Estimate duration from the supplied candle timeframe and visible momentum/structure; do not invent precision. Use WAIT with no duration when the chart is unreadable, chart and news conflict, or available news cannot be matched to the asset. Do not force a direction.',
-    newsWarning ? 'The current-news lookup failed. Clearly state that current news could not be checked and choose WAIT with N/A duration. Do not use memory as a replacement for current sources.' : '',
-    previousReport ? '\nPrior report from this live session (for comparison only; verify everything against the current image and articles):\n' + previousReport.slice(0, 1800) : '',
-    '',
-    'The directional view and duration are non-binding AI estimates; the user independently decides whether to act in Quotex. Do not click controls, place or manage trades, suggest stake sizes, or claim the outcome is guaranteed. Do not imply that a pattern predicts the next price. If evidence does not support a view, choose WAIT and say why.'
-  ].join('\n');
+    'Choose BUY only when the chart evidence gives a clear short-term upward setup and relevant news does not conflict. Choose SELL only when the chart evidence gives a clear short-term downward setup and relevant news does not conflict. Choose WAIT if the chart is unclear, choppy, conflicting, or the news cannot be verified or matched to this asset. Never force a direction.',
+    newsWarning ? 'The current-news lookup failed, so the required decision is WAIT.' : '',
+    'Return exactly one line and nothing else, using exactly one of these forms: NEXT CANDLE: BUY | NEXT CANDLE: SELL | NEXT CANDLE: WAIT. Do not add reasons, headings, markdown, confidence, duration, or any other text.'
+  ].filter(Boolean).join('\n');
 }
+
 async function callGemini(apiKey, model, prompt, image, signal, useUrlContext) {
   if (!MODEL_ALLOWLIST.has(model)) throw new Error('Choose one of the supported Gemini models in AI connection settings.');
   const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent';
@@ -429,6 +411,16 @@ async function callGemini(apiKey, model, prompt, image, signal, useUrlContext) {
   const reportText = Array.isArray(parts) ? parts.map((part) => part.text || '').filter(Boolean).join('\n') : '';
   if (!reportText.trim()) throw new Error('Gemini returned no readable report. Try again with a clearer chart.');
   return reportText.trim();
+}
+
+function normalizeNextCandleDecision(responseText) {
+  const text = String(responseText || '');
+  const labeled = text.match(/(?:^|\n)\s*(?:#{1,6}\s*)?(?:\*\*)?(?:NEXT CANDLE|DECISION)(?:\*\*)?\s*[:：–-]\s*(?:\*\*)?\s*(BUY|SELL|WAIT)\b/i);
+  if (labeled) return 'NEXT CANDLE: ' + labeled[1].toUpperCase();
+
+  const firstLine = text.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || '';
+  const bare = firstLine.match(/^(?:#{1,6}\s*)?(?:\*\*)?(BUY|SELL|WAIT)\b/i);
+  return bare ? 'NEXT CANDLE: ' + bare[1].toUpperCase() : 'NEXT CANDLE: WAIT';
 }
 
 function getTabUrl(tab) {
@@ -565,7 +557,6 @@ async function startLive() {
     return;
   }
   await saveSettings(false);
-  lastLiveReport = '';
   const interval = Math.max(60000, Number(ui.liveInterval.value) || 300000);
   liveTimer = setInterval(() => {
     if (!isBusy) analyze('canvas', true, true);
@@ -637,11 +628,12 @@ async function analyze(sourceMode, automatic, pageAccessReady) {
 
     setStatus(newsWarning ? 'News lookup failed; completing the chart review with news marked unavailable…' : 'Reading chart and accessible article pages…', 'working');
     const effectiveMode = image.sourceMode || sourceMode;
-    const report = await callGemini(apiKey, model, buildPrompt(asset, timeframe, articles, effectiveMode, automatic ? lastLiveReport : '', newsWarning), image, controller.signal, articles.length > 0);
-    ui.report.textContent = report;
+    const report = await callGemini(apiKey, model, buildPrompt(asset, timeframe, articles, effectiveMode, newsWarning), image, controller.signal, articles.length > 0);
+    const decision = newsWarning || !articles.length ? 'NEXT CANDLE: WAIT' : normalizeNextCandleDecision(report);
+    ui.report.textContent = decision;
+    ui.report.dataset.decision = decision.slice(decision.indexOf(':') + 1).trim().toLowerCase();
     ui.reportTime.textContent = new Date().toLocaleString();
     if (automatic) {
-      lastLiveReport = report;
       const intervalMinutes = Math.round(Number(ui.liveInterval.value) / 60000);
       setStatus('Live review ready. Next AI review in ' + intervalMinutes + ' minute' + (intervalMinutes === 1 ? '' : 's') + '.', 'success');
     } else {
