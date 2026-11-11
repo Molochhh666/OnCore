@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OnCore",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Live chart-canvas and screenshot news research sidebar.",
   "minimum_chrome_version": "116",
   "permissions": [
@@ -13,6 +13,10 @@
   "host_permissions": [
     "https://api.gdeltproject.org/*",
     "https://generativelanguage.googleapis.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*.quotex.com/*",
+    "https://*.qxbroker.com/*"
   ],
   "background": {
     "service_worker": "service-worker.js"

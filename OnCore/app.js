@@ -1,6 +1,7 @@
 const DEFAULT_MODEL = 'gemini-3.8-flash';
 const MODEL_ALLOWLIST = new Set(['gemini-3.8-flash', 'gemini-3.5-flash-lite']);
 const MAX_ARTICLES = 6;
+const QUOTEX_ORIGINS = ['https://*.quotex.com/*', 'https://*.qxbroker.com/*'];
 let isBusy = false;
 let liveTimer = null;
 let liveAbortController = null;
@@ -377,7 +378,7 @@ async function getActiveQuotexTab() {
   const tab = tabs && tabs[0];
   if (!tab || !Number.isInteger(tab.windowId)) throw new Error('Open the Quotex chart in the active browser tab first.');
   if (!getTabUrl(tab)) {
-    throw new Error('Chrome has not granted OnCore access to this tab yet. Close the side panel, select the Quotex tab, then click the OnCore toolbar icon to reopen it and try again.');
+    throw new Error('Chrome still cannot read this tab address. Check that OnCore has site access for quotex.com in Chrome extension settings, then retry.');
   }
   if (!isQuotexTab(tab)) {
     const hostname = getTabHostname(tab);
@@ -386,6 +387,18 @@ async function getActiveQuotexTab() {
       : 'OnCore could not read the active tab address. Reopen OnCore from the Quotex toolbar tab and try again.');
   }
   return tab;
+}
+
+async function requestQuotexPageAccess() {
+  let granted = false;
+  try {
+    granted = await chrome.permissions.request({ origins: QUOTEX_ORIGINS });
+  } catch (_) {
+    throw new Error('Chrome could not open the Quotex permission prompt. Reload OnCore and start the review again.');
+  }
+  if (!granted) {
+    throw new Error('Allow OnCore to access quotex.com in Chrome to read the chart, then start the review again.');
+  }
 }
 
 async function captureVisibleScreenshot() {
@@ -456,18 +469,24 @@ async function startLive() {
     setStatus('Check the chart-sharing notice before starting live reading.', 'error');
     return;
   }
+  try {
+    await requestQuotexPageAccess();
+  } catch (error) {
+    setStatus(error.message || 'Quotex page access was not granted.', 'error');
+    return;
+  }
   await saveSettings(false);
   lastLiveReport = '';
   const interval = Math.max(60000, Number(ui.liveInterval.value) || 300000);
   liveTimer = setInterval(() => {
-    if (!isBusy) analyze('canvas', true);
+    if (!isBusy) analyze('canvas', true, true);
   }, interval);
   updateButton();
   setStatus('Starting live chart reading. The first canvas review is running now.', 'working');
-  await analyze('canvas', true);
+  await analyze('canvas', true, true);
 }
 
-async function analyze(sourceMode, automatic) {
+async function analyze(sourceMode, automatic, pageAccessReady) {
   if (isBusy) {
     if (!automatic) setStatus('Wait for the current review to finish.', 'working');
     return false;
@@ -490,6 +509,15 @@ async function analyze(sourceMode, automatic) {
   if (!ui.consent.checked) {
     setStatus('Review and check the chart-sharing notice before analyzing.', 'error');
     return false;
+  }
+
+  if (!pageAccessReady) {
+    try {
+      await requestQuotexPageAccess();
+    } catch (error) {
+      setStatus(error.message || 'Quotex page access was not granted.', 'error');
+      return false;
+    }
   }
 
   const controller = new AbortController();
@@ -546,7 +574,7 @@ ui.model.addEventListener('change', () => saveSettings(false));
 ui.timeframe.addEventListener('change', () => saveSettings(false));
 ui.liveInterval.addEventListener('change', () => saveSettings(false));
 ui.save.addEventListener('click', () => saveSettings(true));
-ui.analyze.addEventListener('click', () => analyze('screenshot', false));
+ui.analyze.addEventListener('click', () => analyze('screenshot', false, false));
 ui.liveStart.addEventListener('click', startLive);
 ui.liveStop.addEventListener('click', () => stopLive(true));
 window.addEventListener('pagehide', () => stopLive(false));

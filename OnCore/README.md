@@ -44,6 +44,7 @@ The API key and basic preferences are stored in `chrome.storage.local` in this b
 
 - `activeTab` lets the extension capture or access the current page after you invoke OnCore.
 - `scripting` is used to add the canvas reader only when you start live mode.
+- On the first review, Chrome asks for optional access to Quotex or QXBroker pages. This scoped page access lets OnCore identify the chart tab and inject the canvas reader; you can revoke it in the extension's site access settings.
 - `storage` saves the API key and preferences locally in the browser profile.
 - `sidePanel` displays the OnCore interface beside the chart.
 - Host access is limited to GDELT's article-list API and Google's Gemini API.
